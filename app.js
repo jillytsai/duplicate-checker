@@ -88,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     let headerRowIndex = -1;
                     let isbnColIndex = -1;
+                    let eissnColIndex = -1;
                     let titleColIndex = -1;
                     let authorColIndex = -1;
                     let publisherColIndex = -1;
@@ -104,7 +105,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         for (let c = 0; c < row.length; c++) {
                             let cellStr = String(row[c]).replace(/\s+/g, '').toLowerCase();
-                            if (isbnColIndex === -1 && (cellStr.includes('isbn') || cellStr.includes('issn') || cellStr.includes('條碼') || cellStr.includes('barcode'))) {
+                            if (eissnColIndex === -1 && (cellStr.includes('eissn') || cellStr === 'e-issn' || cellStr === 'onlineissn')) {
+                                hasIsbn = true;
+                                eissnColIndex = c;
+                            } else if (isbnColIndex === -1 && (cellStr.includes('isbn') || cellStr.includes('issn') || cellStr.includes('條碼') || cellStr.includes('barcode'))) {
                                 hasIsbn = true;
                                 isbnColIndex = c;
                             }
@@ -151,6 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             
                             rowObj['__sheetName'] = sheetName;
                             rowObj['__SYS_ISBN'] = isbnColIndex !== -1 ? String(rowArr[isbnColIndex] !== undefined ? rowArr[isbnColIndex] : "") : "";
+                            rowObj['__SYS_EISSN'] = eissnColIndex !== -1 ? String(rowArr[eissnColIndex] !== undefined ? rowArr[eissnColIndex] : "") : "";
                             rowObj['__SYS_TITLE'] = titleColIndex !== -1 ? String(rowArr[titleColIndex] !== undefined ? rowArr[titleColIndex] : "") : "";
                             rowObj['__SYS_AUTHOR'] = authorColIndex !== -1 ? String(rowArr[authorColIndex] !== undefined ? rowArr[authorColIndex] : "") : "";
                             rowObj['__SYS_PUBLISHER'] = publisherColIndex !== -1 ? String(rowArr[publisherColIndex] !== undefined ? rowArr[publisherColIndex] : "") : "";
@@ -160,13 +165,13 @@ document.addEventListener('DOMContentLoaded', () => {
                                 rowObj['__SYS_SEQ_KEY'] = hdr;
                             }
 
-                            // 只有包含 ISBN/ISSN 或是 書名/刊名 的列才推進佇列，防止讀到最後面的合計、備註欄等等
-                            if (rowObj['__SYS_ISBN'] || rowObj['__SYS_TITLE']) {
+                            // 只有包含 ISBN/ISSN/EISSN 或是 書名/刊名 的列才推進佇列，防止讀到最後面的合計、備註欄等等
+                            if (rowObj['__SYS_ISBN'] || rowObj['__SYS_EISSN'] || rowObj['__SYS_TITLE']) {
                                 excelData.push(rowObj);
                             }
                         }
                     } else {
-                        console.warn("分頁: " + sheetName + " 找不到包含 ISBN/ISSN 或 書名/刊名 的標題列！");
+                        console.warn("分頁: " + sheetName + " 找不到包含 ISBN/ISSN/EISSN 或 書名/刊名 的標題列！");
                         skippedSheets.push(sheetName);
                     }
                 }
@@ -176,11 +181,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log("讀取到的總資料筆數:", excelData.length);
                 
                 if (skippedSheets.length > 0) {
-                    alert(`提醒：以下 ${skippedSheets.length} 個分頁因為找不到「ISBN / ISSN」或「書名 / 刊名」標題列，已被自動略過：\n👉 ${skippedSheets.join(", ")}\n(若這些分頁內真的沒有書籍/期刊資料，請忽略此訊息)`);
+                    alert(`提醒：以下 ${skippedSheets.length} 個分頁因為找不到「ISBN / ISSN / EISSN」或「書名 / 刊名」標題列，已被自動略過：\n👉 ${skippedSheets.join(", ")}\n(若這些分頁內真的沒有書籍/期刊資料，請忽略此訊息)`);
                 }
 
                 if (excelData.length === 0) {
-                    alert("檔案為空！或是所有分頁都找不到為「ISBN / ISSN」或「書名 / 刊名」的欄位列。");
+                    alert("檔案為空！或是所有分頁都找不到為「ISBN / ISSN / EISSN」或「書名 / 刊名」的欄位列。");
                     return;
                 }
 
@@ -218,10 +223,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 row[row['__SYS_SEQ_KEY']] = i + 1;
             }
 
-            let rawIsbn = row['__SYS_ISBN'].replace(/[- ]/g, '').trim();
+            let rawIsbn = row['__SYS_ISBN'] ? row['__SYS_ISBN'].replace(/[- ]/g, '').trim() : '';
             // Use only alphanumeric prefixes for ISBNs to ignore attached metadata 
             let valIsbn = rawIsbn.split(/[^0-9X]/i)[0]; 
-            let title = row['__SYS_TITLE'].trim();
+            
+            let rawEissn = row['__SYS_EISSN'] ? row['__SYS_EISSN'].replace(/[- ]/g, '').trim() : '';
+            let valEissn = rawEissn.split(/[^0-9X]/i)[0]; 
+
+            let title = row['__SYS_TITLE'] ? row['__SYS_TITLE'].trim() : '';
             let author = row['__SYS_AUTHOR'].trim();
             let publisher = row['__SYS_PUBLISHER'].trim();
             let pubYear = row['__SYS_PUBYEAR'].trim();
@@ -236,8 +245,9 @@ document.addEventListener('DOMContentLoaded', () => {
             let specialProperty = "查詢中...";
             let collectionQuantity = "查詢中...";
             let nptuUrl = "";
+            let displayBarcode = valIsbn || valEissn;
             
-            createOrUpdateRow(i, valIsbn, title, author, publisher, pubYear, specialProperty, rowStatus, statusText, collectionQuantity, nptuUrl);
+            createOrUpdateRow(i, displayBarcode, title, author, publisher, pubYear, specialProperty, rowStatus, statusText, collectionQuantity, nptuUrl);
 
             try {
                 if (i > 0) await new Promise(r => setTimeout(r, 600)); 
@@ -250,6 +260,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查${searchType}] ${valIsbn}`;
                     const res = await checkNptu(valIsbn, 'k');
                     if (res.found) { foundMatch = searchType; collectionQuantity = res.quantity; nptuUrl = res.url; }
+                }
+                
+                // 1.5 Try searching by EISSN
+                if (!foundMatch && valEissn && valEissn.length >= 8) {
+                    processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查EISSN] ${valEissn}`;
+                    // Delay to protect from rate limit since we make another request
+                    await new Promise(r => setTimeout(r, 600));
+                    const res = await checkNptu(valEissn, 'k');
+                    if (res.found) { foundMatch = 'EISSN'; collectionQuantity = res.quantity; nptuUrl = res.url; }
                 }
                 
                 // Remove all punctuation/special characters for title search
@@ -312,7 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row["館藏數量"] = collectionQuantity;
             if (nptuUrl) row["系統連結"] = nptuUrl;
             processedData.push(row);
-            createOrUpdateRow(i, valIsbn, title, author, publisher, pubYear, specialProperty, rowStatus, statusText, collectionQuantity, nptuUrl);
+            createOrUpdateRow(i, displayBarcode, title, author, publisher, pubYear, specialProperty, rowStatus, statusText, collectionQuantity, nptuUrl);
         }
 
         isProcessing = false;
@@ -545,6 +564,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const exportRow = { ...row };
             delete exportRow['__sheetName']; // 移出內部分頁標記
             delete exportRow['__SYS_ISBN'];
+            delete exportRow['__SYS_EISSN'];
             delete exportRow['__SYS_TITLE'];
             delete exportRow['__SYS_AUTHOR'];
             delete exportRow['__SYS_PUBLISHER'];

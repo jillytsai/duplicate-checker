@@ -104,11 +104,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         for (let c = 0; c < row.length; c++) {
                             let cellStr = String(row[c]).replace(/\s+/g, '').toLowerCase();
-                            if (cellStr.includes('isbn') || cellStr.includes('條碼') || cellStr.includes('barcode')) {
+                            if (cellStr.includes('isbn') || cellStr.includes('issn') || cellStr.includes('條碼') || cellStr.includes('barcode')) {
                                 hasIsbn = true;
                                 isbnColIndex = c;
                             }
-                            if (cellStr.includes('書名') || cellStr.includes('題名') || cellStr.includes('title') || cellStr.includes('bookname')) {
+                            if (cellStr.includes('書名') || cellStr.includes('刊名') || cellStr.includes('題名') || cellStr.includes('title') || cellStr.includes('bookname')) {
                                 hasTitle = true;
                                 titleColIndex = c;
                             }
@@ -160,13 +160,13 @@ document.addEventListener('DOMContentLoaded', () => {
                                 rowObj['__SYS_SEQ_KEY'] = hdr;
                             }
 
-                            // 只有包含 ISBN 或是 書名 的列才推進佇列，防止讀到最後面的合計、備註欄等等
+                            // 只有包含 ISBN/ISSN 或是 書名/刊名 的列才推進佇列，防止讀到最後面的合計、備註欄等等
                             if (rowObj['__SYS_ISBN'] || rowObj['__SYS_TITLE']) {
                                 excelData.push(rowObj);
                             }
                         }
                     } else {
-                        console.warn("分頁: " + sheetName + " 找不到包含 ISBN 或 書名 的標題列！");
+                        console.warn("分頁: " + sheetName + " 找不到包含 ISBN/ISSN 或 書名/刊名 的標題列！");
                         skippedSheets.push(sheetName);
                     }
                 }
@@ -176,11 +176,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log("讀取到的總資料筆數:", excelData.length);
                 
                 if (skippedSheets.length > 0) {
-                    alert(`提醒：以下 ${skippedSheets.length} 個分頁因為找不到「ISBN」或「書名」標題列，已被自動略過：\n👉 ${skippedSheets.join(", ")}\n(若這些分頁內真的沒有書籍資料，請忽略此訊息)`);
+                    alert(`提醒：以下 ${skippedSheets.length} 個分頁因為找不到「ISBN / ISSN」或「書名 / 刊名」標題列，已被自動略過：\n👉 ${skippedSheets.join(", ")}\n(若這些分頁內真的沒有書籍/期刊資料，請忽略此訊息)`);
                 }
 
                 if (excelData.length === 0) {
-                    alert("檔案為空！或是所有分頁都找不到為「ISBN」或「書名」的欄位列。");
+                    alert("檔案為空！或是所有分頁都找不到為「ISBN / ISSN」或「書名 / 刊名」的欄位列。");
                     return;
                 }
 
@@ -243,11 +243,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 let foundMatch = null;
                 
-                // 1. Try searching by ISBN
-                if (valIsbn && valIsbn.length >= 10) {
-                    processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查ISBN] ${valIsbn}`;
+                // 1. Try searching by ISBN / ISSN
+                if (valIsbn && valIsbn.length >= 8) {
+                    let searchType = valIsbn.length === 8 ? 'ISSN' : 'ISBN';
+                    processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查${searchType}] ${valIsbn}`;
                     const res = await checkNptu(valIsbn, 'k');
-                    if (res.found) { foundMatch = 'ISBN'; collectionQuantity = res.quantity; }
+                    if (res.found) { foundMatch = searchType; collectionQuantity = res.quantity; }
                 }
                 
                 // Remove all punctuation/special characters for title search
@@ -445,8 +446,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (title.includes("限制級") || title.includes("18禁")) result.push("限制級");
         }
 
-        if (!isbn || isbn.length < 10) {
-            return result.length > 0 ? result.join("/") : '無'; // 若無有效 ISBN 也當作查無此書處理
+        if (!isbn || isbn.length < 8) {
+            return result.length > 0 ? result.join("/") : '無'; // 若無有效 ISBN/ISSN 也當作查無此書處理
         }
 
         let querySuccess = false;

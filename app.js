@@ -104,26 +104,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         for (let c = 0; c < row.length; c++) {
                             let cellStr = String(row[c]).replace(/\s+/g, '').toLowerCase();
-                            if (cellStr.includes('isbn') || cellStr.includes('issn') || cellStr.includes('條碼') || cellStr.includes('barcode')) {
+                            if (isbnColIndex === -1 && (cellStr.includes('isbn') || cellStr.includes('issn') || cellStr.includes('條碼') || cellStr.includes('barcode'))) {
                                 hasIsbn = true;
                                 isbnColIndex = c;
                             }
-                            if (cellStr.includes('書名') || cellStr.includes('刊名') || cellStr.includes('題名') || cellStr.includes('title') || cellStr.includes('bookname')) {
+                            if (titleColIndex === -1 && (cellStr.includes('書名') || cellStr.includes('刊名') || cellStr.includes('題名') || cellStr.includes('title') || cellStr.includes('bookname'))) {
                                 hasTitle = true;
                                 titleColIndex = c;
                             }
-                            if (cellStr.includes('作者') || cellStr.includes('著者') || cellStr.includes('author')) {
+                            if (authorColIndex === -1 && (cellStr.includes('作者') || cellStr.includes('著者') || cellStr.includes('author'))) {
                                 authorColIndex = c;
                             }
                             // 嚴格比對出版者、出版社
-                            if (cellStr.includes('出版者') || cellStr.includes('出版社') || cellStr === '出版' || cellStr.includes('publisher')) {
+                            if (publisherColIndex === -1 && (cellStr.includes('出版者') || cellStr.includes('出版社') || cellStr === '出版' || cellStr.includes('publisher'))) {
                                 publisherColIndex = c;
                             }
                             // 獨立比對出版年
-                            if (cellStr.includes('出版年') || cellStr.includes('pubyear') || cellStr.includes('year')) {
+                            if (pubYearColIndex === -1 && (cellStr.includes('出版年') || cellStr.includes('pubyear') || cellStr.includes('year'))) {
                                 pubYearColIndex = c;
                             }
-                            if (cellStr.includes('序號') || cellStr === 'no' || cellStr === 'id') {
+                            if (seqColIndex === -1 && (cellStr.includes('序號') || cellStr === 'no' || cellStr === 'id')) {
                                 seqColIndex = c;
                             }
                         }

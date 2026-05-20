@@ -235,8 +235,9 @@ document.addEventListener('DOMContentLoaded', () => {
             let isDuplicate = "否"; 
             let specialProperty = "查詢中...";
             let collectionQuantity = "查詢中...";
+            let nptuUrl = "";
             
-            createOrUpdateRow(i, valIsbn, title, author, publisher, pubYear, specialProperty, rowStatus, statusText, collectionQuantity);
+            createOrUpdateRow(i, valIsbn, title, author, publisher, pubYear, specialProperty, rowStatus, statusText, collectionQuantity, nptuUrl);
 
             try {
                 if (i > 0) await new Promise(r => setTimeout(r, 600)); 
@@ -248,7 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     let searchType = valIsbn.length === 8 ? 'ISSN' : 'ISBN';
                     processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查${searchType}] ${valIsbn}`;
                     const res = await checkNptu(valIsbn, 'k');
-                    if (res.found) { foundMatch = searchType; collectionQuantity = res.quantity; }
+                    if (res.found) { foundMatch = searchType; collectionQuantity = res.quantity; nptuUrl = res.url; }
                 }
                 
                 // Remove all punctuation/special characters for title search
@@ -259,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!foundMatch && titleNoSpecial) {
                     processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查書名] ${titleNoSpecial}`;
                     const res = await checkNptu(titleNoSpecial, 'k');
-                    if (res.found) { foundMatch = '書名'; collectionQuantity = res.quantity; }
+                    if (res.found) { foundMatch = '書名'; collectionQuantity = res.quantity; nptuUrl = res.url; }
                 }
                 
                 // 3. Try "Cleaned" Title (remove subtitles etc, taking only part before typical subtitle separators)
@@ -274,7 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Delay again to protect from rate limit since we make another request
                         await new Promise(r => setTimeout(r, 600));
                         const res = await checkNptu(cleanTitle, 'k');
-                        if (res.found) { foundMatch = '書名(模糊)'; collectionQuantity = res.quantity; }
+                        if (res.found) { foundMatch = '書名(模糊)'; collectionQuantity = res.quantity; nptuUrl = res.url; }
                     }
                 }
                 
@@ -309,8 +310,9 @@ document.addEventListener('DOMContentLoaded', () => {
             row["寫真書或限制級圖書"] = specialProperty;
             row["是否為複本"] = isDuplicate;
             row["館藏數量"] = collectionQuantity;
+            if (nptuUrl) row["系統連結"] = nptuUrl;
             processedData.push(row);
-            createOrUpdateRow(i, valIsbn, title, author, publisher, pubYear, specialProperty, rowStatus, statusText, collectionQuantity);
+            createOrUpdateRow(i, valIsbn, title, author, publisher, pubYear, specialProperty, rowStatus, statusText, collectionQuantity, nptuUrl);
         }
 
         isProcessing = false;
@@ -323,7 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
         resetBtn.style.display = 'inline-flex';
     }
 
-    function createOrUpdateRow(index, isbn, title, author, publisher, pubYear, specialProperty, statusClass, statusText, quantity = "-") {
+    function createOrUpdateRow(index, isbn, title, author, publisher, pubYear, specialProperty, statusClass, statusText, quantity = "-", link = "") {
         let tr = document.getElementById(`row-${index}`);
         if (!tr) {
             tr = document.createElement('tr');
@@ -359,6 +361,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <td><span class="badge" style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:0.9em;color:${specialProperty.includes('限制級')?'#d32f2f':'#666'}">${specialProperty || '-'}</span></td>
             <td><span class="status status-${statusClass}" style="${isDuplicateRed ? 'color: #d32f2f; background: rgba(211,47,47,0.1);' : ''}">${icon} ${statusText}</span></td>
             <td style="text-align:center;font-weight:bold;color:${isQtyRed ? '#d32f2f' : '#4f46e5'};">${quantity}</td>
+            <td style="text-align:center;">${link ? `<a href="${link}" target="_blank" style="color:#4f46e5;text-decoration:none;"><i class="ph-bold ph-link"></i></a>` : '-'}</td>
         `;
     }
 
@@ -426,11 +429,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 ) {
                     // Confirm it actually found records, not just "0 Search Results"
                     if (html.includes("沒有找到任何符合的資料") || html.includes("查無資料") || html.includes("0 筆結果")) {
-                        return { found: false, quantity: "0" };
+                        return { found: false, quantity: "0", url: "" };
                     }
-                    return { found: true, quantity: quantityStr || "1+" };
+                    return { found: true, quantity: quantityStr || "1+", url: searchUrl };
                 }
-                return { found: false, quantity: "0" }; 
+                return { found: false, quantity: "0", url: "" }; 
             } catch (err) {
                 // Ignore and try next proxy
                 lastErr = err.message;
@@ -589,6 +592,15 @@ document.addEventListener('DOMContentLoaded', () => {
                             cell.s = {
                                 font: { color: { rgb: "FF0000" }, bold: true }
                             };
+                        }
+                        
+                        // 設定「系統連結」欄位為可點擊超連結的樣式
+                        if (header === '系統連結' && val && val.startsWith('http')) {
+                            cell.l = { Target: val };
+                            cell.s = cell.s || {};
+                            cell.s.font = cell.s.font || {};
+                            cell.s.font.color = { rgb: "0563C1" };
+                            cell.s.font.underline = true;
                         }
                     }
                 }

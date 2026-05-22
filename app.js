@@ -150,7 +150,29 @@ document.addEventListener('DOMContentLoaded', () => {
                             // 用找到的標題列當作物件的 Key，才能保留匯出時的正確標題
                             for (let c = 0; c < headerRow.length; c++) {
                                 let hdr = String(headerRow[c]).trim() || `__EMPTY_${c}`;
-                                rowObj[hdr] = rowArr[c] !== undefined ? rowArr[c] : "";
+                                let cellVal = rowArr[c] !== undefined ? rowArr[c] : "";
+                                
+                                // 特別處理出版年：若是 Excel 日期序號，將其轉換為完整的 YYYY/M/D 格式，避免年份只顯示兩碼 (例如 26)
+                                if (c === pubYearColIndex) {
+                                    const cellRef = XLSX.utils.encode_cell({ c: c, r: r });
+                                    const cell = worksheet[cellRef];
+                                    if (cell && cell.v !== undefined) {
+                                        // 判斷是否為 Excel 序號日期 (大於 10000 且顯示文字帶有日期分隔符號)
+                                        if (typeof cell.v === 'number' && cell.v > 10000 && cell.w && (cell.w.includes('/') || cell.w.includes('-') || cell.w.includes('年'))) {
+                                            const date = new Date(Math.round((cell.v - 25569) * 86400 * 1000));
+                                            const year = date.getUTCFullYear();
+                                            const month = date.getUTCMonth() + 1;
+                                            const day = date.getUTCDate();
+                                            cellVal = `${year}/${month}/${day}`;
+                                        } else if (cell.w !== undefined) {
+                                            cellVal = String(cell.w);
+                                        } else {
+                                            cellVal = String(cell.v);
+                                        }
+                                    }
+                                }
+                                
+                                rowObj[hdr] = cellVal;
                             }
                             
                             rowObj['__sheetName'] = sheetName;
@@ -159,7 +181,14 @@ document.addEventListener('DOMContentLoaded', () => {
                             rowObj['__SYS_TITLE'] = titleColIndex !== -1 ? String(rowArr[titleColIndex] !== undefined ? rowArr[titleColIndex] : "") : "";
                             rowObj['__SYS_AUTHOR'] = authorColIndex !== -1 ? String(rowArr[authorColIndex] !== undefined ? rowArr[authorColIndex] : "") : "";
                             rowObj['__SYS_PUBLISHER'] = publisherColIndex !== -1 ? String(rowArr[publisherColIndex] !== undefined ? rowArr[publisherColIndex] : "") : "";
-                            rowObj['__SYS_PUBYEAR'] = pubYearColIndex !== -1 ? String(rowArr[pubYearColIndex] !== undefined ? rowArr[pubYearColIndex] : "") : "";
+                            
+                            let pubYearVal = "";
+                            if (pubYearColIndex !== -1) {
+                                let hdr = String(headerRow[pubYearColIndex]).trim() || `__EMPTY_${pubYearColIndex}`;
+                                pubYearVal = String(rowObj[hdr] !== undefined ? rowObj[hdr] : "");
+                            }
+                            rowObj['__SYS_PUBYEAR'] = pubYearVal;
+                            
                             if (seqColIndex !== -1) {
                                 let hdr = String(headerRow[seqColIndex]).trim() || `__EMPTY_${seqColIndex}`;
                                 rowObj['__SYS_SEQ_KEY'] = hdr;

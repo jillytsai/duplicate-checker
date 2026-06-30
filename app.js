@@ -82,7 +82,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     const worksheet = workbook.Sheets[sheetName];
-                    const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }); // 取得二維陣列
+                    let rawRows;
+                    if (worksheet['!ref']) {
+                        const range = XLSX.utils.decode_range(worksheet['!ref']);
+                        range.s.c = 0; // 強制從 A 欄開始，防止前面有空欄導致 index 位移而讀錯出版年
+                        rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "", range: XLSX.utils.encode_range(range) });
+                    } else {
+                        rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+                    }
                     
                     if (rawRows.length === 0) continue;
 

@@ -413,7 +413,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <td>${displayAuthor || '-'}</td>
             <td>${displayPublisher || '-'}</td>
             <td>${displayPubYear}</td>
-            <td><span class="badge" style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:0.9em;color:${specialProperty.includes('限制級')?'#d32f2f':'#666'}">${specialProperty || '-'}</span></td>
+            <td><span class="badge" style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:0.9em;color:${(specialProperty.includes('限制級') || specialProperty.includes('寫真書'))?'#d32f2f':'#666'}">${specialProperty || '-'}</span></td>
             <td><span class="status status-${statusClass}" style="${isDuplicateRed ? 'color: #d32f2f; background: rgba(211,47,47,0.1);' : ''}">${icon} ${statusText}</span></td>
             <td style="text-align:center;font-weight:bold;color:${isQtyRed ? '#d32f2f' : '#4f46e5'};">${quantity}</td>
             <td style="text-align:center;">${link ? `<a href="${link}" target="_blank" style="color:#4f46e5;text-decoration:none;"><i class="ph-bold ph-link"></i></a>` : '-'}</td>
@@ -637,7 +637,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (header === '是否為複本' && val.includes('是')) {
                             shouldBeRed = true;
                         }
-                        if (header === '寫真書或限制級圖書' && val.includes('限制級')) {
+                        if (header === '寫真書或限制級圖書' && (val.includes('限制級') || val.includes('寫真書'))) {
                             shouldBeRed = true;
                         }
                         if (header === '館藏數量' && !isNaN(parseInt(val)) && parseInt(val) > 0) {

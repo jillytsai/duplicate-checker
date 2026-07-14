@@ -115,26 +115,26 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (eissnColIndex === -1 && (cellStr.includes('eissn') || cellStr === 'e-issn' || cellStr === 'onlineissn')) {
                                 hasIsbn = true;
                                 eissnColIndex = c;
-                            } else if (isbnColIndex === -1 && (cellStr.includes('isbn') || cellStr.includes('issn') || cellStr.includes('條碼') || cellStr.includes('barcode'))) {
+                            } else if (isbnColIndex === -1 && (cellStr.includes('isbn') || cellStr.includes('issn') || cellStr.includes('條碼') || cellStr.includes('barcode') || cellStr.includes('eisbn13') || cellStr.includes('pisbn13') || cellStr.includes('eisbn') || cellStr.includes('pisbn'))) {
                                 hasIsbn = true;
                                 isbnColIndex = c;
                             }
-                            if (titleColIndex === -1 && (cellStr.includes('書名') || cellStr.includes('刊名') || cellStr.includes('題名') || cellStr.includes('title') || cellStr.includes('bookname'))) {
+                            if (titleColIndex === -1 && (cellStr.includes('書名') || cellStr.includes('刊名') || cellStr.includes('題名') || cellStr.includes('title') || cellStr.includes('bookname') || cellStr.includes('booktitle') || cellStr.includes('name') || cellStr.includes('subject'))) {
                                 hasTitle = true;
                                 titleColIndex = c;
                             }
-                            if (authorColIndex === -1 && (cellStr.includes('作者') || cellStr.includes('著者') || cellStr.includes('author'))) {
+                            if (authorColIndex === -1 && (cellStr.includes('作者') || cellStr.includes('著者') || cellStr.includes('author') || cellStr.includes('creator') || cellStr.includes('writer'))) {
                                 authorColIndex = c;
                             }
                             // 嚴格比對出版者、出版社
-                            if (publisherColIndex === -1 && (cellStr.includes('出版者') || cellStr.includes('出版社') || cellStr === '出版' || cellStr.includes('publisher'))) {
+                            if (publisherColIndex === -1 && (cellStr.includes('出版者') || cellStr.includes('出版社') || cellStr === '出版' || cellStr.includes('publisher') || cellStr.includes('press') || cellStr.includes('publishing') || cellStr === 'pub')) {
                                 publisherColIndex = c;
                             }
                             // 獨立比對出版年
-                            if (pubYearColIndex === -1 && (cellStr.includes('出版年') || cellStr.includes('pubyear') || cellStr.includes('year'))) {
+                            if (pubYearColIndex === -1 && (cellStr.includes('出版年') || cellStr.includes('pubyear') || cellStr.includes('year') || cellStr.includes('date') || cellStr.includes('pubdate') || cellStr.includes('publishyear'))) {
                                 pubYearColIndex = c;
                             }
-                            if (seqColIndex === -1 && (cellStr.includes('序號') || cellStr === 'no' || cellStr === 'id')) {
+                            if (seqColIndex === -1 && (cellStr.includes('序號') || cellStr === 'no' || cellStr === 'id' || cellStr === 'seq' || cellStr === 'index' || cellStr === 'number')) {
                                 seqColIndex = c;
                             }
                         }

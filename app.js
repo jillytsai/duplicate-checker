@@ -123,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             } else if (pisbnColIndex === -1 && (cellStr.includes('pisbn13') || cellStr.includes('pisbn'))) {
                                 hasIsbn = true;
                                 pisbnColIndex = c;
-                            } else if (isbnColIndex === -1 && (cellStr.includes('isbn') || cellStr.includes('issn') || cellStr.includes('條碼') || cellStr.includes('barcode'))) {
+                            } else if (isbnColIndex === -1 && (cellStr.includes('isbn') || cellStr.includes('issn'))) {
                                 hasIsbn = true;
                                 isbnColIndex = c;
                             }

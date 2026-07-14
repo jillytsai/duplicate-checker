@@ -96,6 +96,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     let headerRowIndex = -1;
                     let isbnColIndex = -1;
                     let eissnColIndex = -1;
+                    let eisbnColIndex = -1;
+                    let pisbnColIndex = -1;
                     let titleColIndex = -1;
                     let authorColIndex = -1;
                     let publisherColIndex = -1;
@@ -115,7 +117,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (eissnColIndex === -1 && (cellStr.includes('eissn') || cellStr === 'e-issn' || cellStr === 'onlineissn')) {
                                 hasIsbn = true;
                                 eissnColIndex = c;
-                            } else if (isbnColIndex === -1 && (cellStr.includes('isbn') || cellStr.includes('issn') || cellStr.includes('條碼') || cellStr.includes('barcode') || cellStr.includes('eisbn13') || cellStr.includes('pisbn13') || cellStr.includes('eisbn') || cellStr.includes('pisbn'))) {
+                            } else if (eisbnColIndex === -1 && (cellStr.includes('eisbn13') || cellStr.includes('eisbn'))) {
+                                hasIsbn = true;
+                                eisbnColIndex = c;
+                            } else if (pisbnColIndex === -1 && (cellStr.includes('pisbn13') || cellStr.includes('pisbn'))) {
+                                hasIsbn = true;
+                                pisbnColIndex = c;
+                            } else if (isbnColIndex === -1 && (cellStr.includes('isbn') || cellStr.includes('issn') || cellStr.includes('條碼') || cellStr.includes('barcode'))) {
                                 hasIsbn = true;
                                 isbnColIndex = c;
                             }
@@ -185,6 +193,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             rowObj['__sheetName'] = sheetName;
                             rowObj['__SYS_ISBN'] = isbnColIndex !== -1 ? String(rowArr[isbnColIndex] !== undefined ? rowArr[isbnColIndex] : "") : "";
                             rowObj['__SYS_EISSN'] = eissnColIndex !== -1 ? String(rowArr[eissnColIndex] !== undefined ? rowArr[eissnColIndex] : "") : "";
+                            rowObj['__SYS_EISBN'] = eisbnColIndex !== -1 ? String(rowArr[eisbnColIndex] !== undefined ? rowArr[eisbnColIndex] : "") : "";
+                            rowObj['__SYS_PISBN'] = pisbnColIndex !== -1 ? String(rowArr[pisbnColIndex] !== undefined ? rowArr[pisbnColIndex] : "") : "";
                             rowObj['__SYS_TITLE'] = titleColIndex !== -1 ? String(rowArr[titleColIndex] !== undefined ? rowArr[titleColIndex] : "") : "";
                             rowObj['__SYS_AUTHOR'] = authorColIndex !== -1 ? String(rowArr[authorColIndex] !== undefined ? rowArr[authorColIndex] : "") : "";
                             rowObj['__SYS_PUBLISHER'] = publisherColIndex !== -1 ? String(rowArr[publisherColIndex] !== undefined ? rowArr[publisherColIndex] : "") : "";
@@ -201,8 +211,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 rowObj['__SYS_SEQ_KEY'] = hdr;
                             }
 
-                            // 只有包含 ISBN/ISSN/EISSN 或是 書名/刊名 的列才推進佇列，防止讀到最後面的合計、備註欄等等
-                            if (rowObj['__SYS_ISBN'] || rowObj['__SYS_EISSN'] || rowObj['__SYS_TITLE']) {
+                            // 只有包含 ISBN/ISSN/EISSN/eISBN/pISBN 或是 書名/刊名 的列才推進佇列，防止讀到最後面的合計、備註欄等等
+                            if (rowObj['__SYS_ISBN'] || rowObj['__SYS_EISSN'] || rowObj['__SYS_EISBN'] || rowObj['__SYS_PISBN'] || rowObj['__SYS_TITLE']) {
                                 excelData.push(rowObj);
                             }
                         }
@@ -263,6 +273,12 @@ document.addEventListener('DOMContentLoaded', () => {
             // Use only alphanumeric prefixes for ISBNs to ignore attached metadata 
             let valIsbn = rawIsbn.split(/[^0-9X]/i)[0]; 
             
+            let rawEisbn = row['__SYS_EISBN'] ? row['__SYS_EISBN'].replace(/[- ]/g, '').trim() : '';
+            let valEisbn = rawEisbn.split(/[^0-9X]/i)[0];
+
+            let rawPisbn = row['__SYS_PISBN'] ? row['__SYS_PISBN'].replace(/[- ]/g, '').trim() : '';
+            let valPisbn = rawPisbn.split(/[^0-9X]/i)[0];
+
             let rawEissn = row['__SYS_EISSN'] ? row['__SYS_EISSN'].replace(/[- ]/g, '').trim() : '';
             let valEissn = rawEissn.split(/[^0-9X]/i)[0]; 
 
@@ -271,7 +287,14 @@ document.addEventListener('DOMContentLoaded', () => {
             let publisher = row['__SYS_PUBLISHER'].trim();
             let pubYear = row['__SYS_PUBYEAR'].trim();
 
-            processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): ${title || valIsbn || '未知'}`;
+            let barcodes = [];
+            if (valIsbn) barcodes.push(valIsbn);
+            if (valEisbn) barcodes.push(valEisbn);
+            if (valPisbn) barcodes.push(valPisbn);
+            if (valEissn) barcodes.push(valEissn);
+            let displayBarcode = barcodes.length > 0 ? barcodes.join(" / ") : "-";
+
+            processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): ${title || displayBarcode || '未知'}`;
             processCount.textContent = `${i + 1} / ${excelData.length}`;
             progressBar.style.width = `${((i + 1) / excelData.length) * 100}%`;
             
@@ -281,7 +304,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let specialProperty = "查詢中...";
             let collectionQuantity = "查詢中...";
             let nptuUrl = "";
-            let displayBarcode = valIsbn || valEissn;
             
             createOrUpdateRow(i, displayBarcode, title, author, publisher, pubYear, specialProperty, rowStatus, statusText, collectionQuantity, nptuUrl);
 
@@ -298,10 +320,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (res.found) { foundMatch = searchType; collectionQuantity = res.quantity; nptuUrl = res.url; }
                 }
                 
+                // 1.2 Try searching by eISBN
+                if (!foundMatch && valEisbn && valEisbn.length >= 8) {
+                    processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查eISBN] ${valEisbn}`;
+                    await new Promise(r => setTimeout(r, 600));
+                    const res = await checkNptu(valEisbn, 'k');
+                    if (res.found) { foundMatch = 'eISBN'; collectionQuantity = res.quantity; nptuUrl = res.url; }
+                }
+
+                // 1.3 Try searching by pISBN
+                if (!foundMatch && valPisbn && valPisbn.length >= 8) {
+                    processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查pISBN] ${valPisbn}`;
+                    await new Promise(r => setTimeout(r, 600));
+                    const res = await checkNptu(valPisbn, 'k');
+                    if (res.found) { foundMatch = 'pISBN'; collectionQuantity = res.quantity; nptuUrl = res.url; }
+                }
+                
                 // 1.5 Try searching by EISSN
                 if (!foundMatch && valEissn && valEissn.length >= 8) {
                     processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查EISSN] ${valEissn}`;
-                    // Delay to protect from rate limit since we make another request
                     await new Promise(r => setTimeout(r, 600));
                     const res = await checkNptu(valEissn, 'k');
                     if (res.found) { foundMatch = 'EISSN'; collectionQuantity = res.quantity; nptuUrl = res.url; }
@@ -353,10 +390,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 collectionQuantity = "錯誤";
             }
 
-            processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查寫真/限制級] ${valIsbn}`;
+            processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查寫真/限制級] ${displayBarcode}`;
+            let isbnsToCheck = [];
+            if (valIsbn) isbnsToCheck.push(valIsbn);
+            if (valEisbn) isbnsToCheck.push(valEisbn);
+            if (valPisbn) isbnsToCheck.push(valPisbn);
+
             try {
-                if (i > 0) await new Promise(r => setTimeout(r, 600));
-                specialProperty = await checkSpecialProperty(valIsbn, title);
+                if (isbnsToCheck.length === 0) {
+                    specialProperty = await checkSpecialProperty("", title);
+                } else {
+                    let lastResult = "無";
+                    for (let idx = 0; idx < isbnsToCheck.length; idx++) {
+                        const currentIsbn = isbnsToCheck[idx];
+                        try {
+                            if (idx > 0 || i > 0) await new Promise(r => setTimeout(r, 600));
+                            let res = await checkSpecialProperty(currentIsbn, title);
+                            if (res !== "無" && res !== "查詢失敗") {
+                                lastResult = res;
+                                break; // Found photo book or restricted!
+                            }
+                            if (res === "無") {
+                                lastResult = "無";
+                            }
+                        } catch (e) {
+                            console.error(`查詢 ISBN ${currentIsbn} 特殊屬性失敗:`, e);
+                            if (lastResult === "無") lastResult = "查詢失敗";
+                        }
+                    }
+                    specialProperty = lastResult;
+                }
             } catch (err) {
                 specialProperty = "查詢失敗";
             }

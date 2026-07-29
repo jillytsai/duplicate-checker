@@ -469,12 +469,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const isDuplicateRed = statusText.includes('是');
         const isQtyRed = !isNaN(parseInt(quantity)) && parseInt(quantity) > 0;
 
+        const escapeHtml = (str) => str ? str.replace(/"/g, '&quot;') : '';
+        const titleTooltip = escapeHtml(title);
+        const authorTooltip = escapeHtml(author);
+        const publisherTooltip = escapeHtml(publisher);
+
         tr.innerHTML = `
             <td>${index + 1}</td>
             <td style="font-family:monospace">${isbn || '-'}</td>
-            <td>${displayTitle || '-'}</td>
-            <td>${displayAuthor || '-'}</td>
-            <td>${displayPublisher || '-'}</td>
+            <td title="${titleTooltip}">${displayTitle || '-'}</td>
+            <td title="${authorTooltip}">${displayAuthor || '-'}</td>
+            <td title="${publisherTooltip}">${displayPublisher || '-'}</td>
             <td>${displayPubYear}</td>
             <td><span class="badge" style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:0.9em;color:${(specialProperty.includes('限制級') || specialProperty.includes('寫真書'))?'#d32f2f':'#666'}">${specialProperty || '-'}</span></td>
             <td><span class="status status-${statusClass}" style="${isDuplicateRed ? 'color: #d32f2f; background: rgba(211,47,47,0.1);' : ''}">${icon} ${statusText}</span></td>

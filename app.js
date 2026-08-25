@@ -484,7 +484,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <td><span class="badge" style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:0.9em;color:${(specialProperty.includes('限制級') || specialProperty.includes('寫真書'))?'#d32f2f':'#666'}">${specialProperty || '-'}</span></td>
             <td><span class="status status-${statusClass}" style="${isDuplicateRed ? 'color: #d32f2f; background: rgba(211,47,47,0.1);' : ''}">${icon} ${statusText}</span></td>
             <td style="text-align:center;font-weight:bold;color:${isQtyRed ? '#d32f2f' : '#4f46e5'};">${quantity}</td>
-            <td style="text-align:center;">${link ? `<a href="${link}" target="_blank" style="color:#4f46e5;text-decoration:none;"><i class="ph-bold ph-link"></i></a>` : '-'}</td>
+            <td style="text-align:center;">${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer" onclick="window.open(this.href, '_blank', 'width=1100,height=800,scrollbars=yes,resizable=yes'); return false;" title="在獨立新視窗開啟館藏連結" style="color:#4f46e5;text-decoration:none;cursor:pointer;"><i class="ph-bold ph-link"></i></a>` : '-'}</td>
         `;
     }
 

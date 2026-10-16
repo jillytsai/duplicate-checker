@@ -705,11 +705,62 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error("連線被拒，請安裝並開啟「Allow CORS」擴充功能再重試 (原錯誤: " + (lastErr || "代理伺服器無回應") + ")");
     }
 
+    function decodeHtmlEntities(str) {
+        if (!str) return "";
+        return str
+            .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+            .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+            .replace(/&nbsp;/gi, ' ');
+    }
+
+    function detectSpecialKeywords(decodedHtml, htmlStr, result) {
+        if (!result.includes("限制級")) {
+            if (
+                htmlStr.includes("限制級商品") || 
+                htmlStr.includes("適讀年齡限制級") ||
+                htmlStr.includes(">18+<") ||
+                htmlStr.includes("18禁") ||
+                htmlStr.includes("18限") ||
+                htmlStr.includes("級別:限制級") || 
+                htmlStr.includes("級別：限制級") ||
+                /\bR-?18\b/i.test(decodedHtml) ||
+                /(?:規格|級別|分級|年齡|限制|警語)[^<]{0,25}(?:R-?18|18禁|限制級)/i.test(decodedHtml) ||
+                />[^<]*(限制級|十八歲以下禁止|未滿18歲)[^>]*</i.test(decodedHtml)
+            ) {
+                result.push("限制級");
+            }
+        }
+        
+        if (!result.includes("寫真書")) {
+            if (
+                htmlStr.includes(">寫真<") || 
+                htmlStr.includes("分類:寫真") || 
+                htmlStr.includes("分類：寫真") ||
+                htmlStr.includes("藝人寫真") ||
+                htmlStr.includes("寫真集") ||
+                htmlStr.includes("寫真書") ||
+                htmlStr.includes("偶像寫真") ||
+                htmlStr.includes("男子寫真") ||
+                htmlStr.includes("美女寫真") ||
+                htmlStr.includes("全見寫真") ||
+                htmlStr.includes("影像紀實") ||
+                htmlStr.includes("寫真紀實") ||
+                />[^<]*(寫真集|寫真書|偶像寫真|藝人寫真|影像紀實|寫真紀實)[^>]*</i.test(decodedHtml)
+            ) {
+                result.push("寫真書");
+            }
+        }
+    }
+
     async function checkSpecialProperty(isbn, title) {
         let result = [];
-        if (title && (title.includes("寫真") || title.includes("限制級") || title.includes("18禁"))) {
-            if (title.includes("寫真")) result.push("寫真書");
-            if (title.includes("限制級") || title.includes("18禁")) result.push("限制級");
+        if (title) {
+            if (title.includes("寫真") || title.includes("影像紀實") || title.includes("寫真紀實")) {
+                result.push("寫真書");
+            }
+            if (title.includes("限制級") || title.includes("18禁") || /\bR-?18\b/i.test(title)) {
+                result.push("限制級");
+            }
         }
 
         if (!isbn || isbn.length < 8) {
@@ -717,79 +768,98 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let querySuccess = false;
-        
-        // 依要求使用三民書局
-        const urls = [
-            `https://www.sanmin.com.tw/search?isbn=${encodeURIComponent(isbn)}`
+        let bookFoundInStore = false;
+
+        // 1. 優先查詢三民書局
+        const sanminUrl = `https://www.sanmin.com.tw/search?isbn=${encodeURIComponent(isbn)}`;
+        const sanminProxies = [
+            sanminUrl,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(sanminUrl)}`,
+            `https://corsproxy.io/?${encodeURIComponent(sanminUrl)}`
         ];
 
-        for (const url of urls) {
-            const proxies = [
-                url, // 加入直接連線 (若使用者有裝 CORS 解鎖套件會優先成功且最快)
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-                `https://corsproxy.io/?${encodeURIComponent(url)}`
+        for (const proxy of sanminProxies) {
+            try {
+                const res = await fetchWithTimeout(proxy, 10000);
+                if (!res.ok) continue;
+
+                const rawHtml = await res.text();
+                const decodedHtml = decodeHtmlEntities(rawHtml);
+
+                // 確保真的抓到了網站，而不是代理伺服器的錯誤頁面
+                if (!decodedHtml.includes("三民") && !decodedHtml.includes("sanmin") && !decodedHtml.includes("商品") && !decodedHtml.includes("查詢")) {
+                    continue;
+                }
+
+                querySuccess = true;
+                const htmlStr = decodedHtml.replace(/\s+/g, '');
+
+                // 檢查三民是否查無此書（含新版提示語「請以普遍的關鍵字重新搜尋」）
+                const sanminNotFound =
+                    htmlStr.includes("請以普遍的關鍵字重新搜尋") ||
+                    htmlStr.includes("請嘗試使用其他語義相近的關鍵字") ||
+                    htmlStr.includes("找不到符合的商品") || 
+                    htmlStr.includes("查無相關商品") || 
+                    htmlStr.includes("沒有找到任何符合的資料") || 
+                    htmlStr.includes("沒有符合的搜尋結果") || 
+                    htmlStr.includes("您查詢的關鍵字沒有符合的商品") ||
+                    htmlStr.includes("抱歉，沒有找到");
+
+                if (!sanminNotFound) {
+                    bookFoundInStore = true;
+                    detectSpecialKeywords(decodedHtml, htmlStr, result);
+                }
+
+                break; // 成功抓取三民回應即可脫離 proxy 迴圈
+            } catch (e) { }
+        }
+
+        // 2. 若三民書局查無此書，自動改查「城邦讀書花園 (cite.com.tw)」作為備援
+        if (!bookFoundInStore) {
+            const citeUrl = `https://www.cite.com.tw/search_result?keywords=${encodeURIComponent(isbn)}`;
+            const citeProxies = [
+                citeUrl,
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(citeUrl)}`,
+                `https://corsproxy.io/?${encodeURIComponent(citeUrl)}`
             ];
 
-            for (const proxy of proxies) {
+            for (const proxy of citeProxies) {
                 try {
-                    const res = await fetchWithTimeout(proxy, 10000); // 延長至 10 秒避免代理商回應太慢
+                    const res = await fetchWithTimeout(proxy, 10000);
                     if (!res.ok) continue;
 
                     const rawHtml = await res.text();
-                    
-                    // 確保真的抓到了網站，而不是代理伺服器的錯誤頁面
-                    if (!rawHtml.includes("三民") && !rawHtml.includes("sanmin") && !rawHtml.includes("商品") && !rawHtml.includes("查詢")) {
+                    const decodedHtml = decodeHtmlEntities(rawHtml);
+                    if (!decodedHtml.includes("城邦") && !decodedHtml.includes("cite") && !decodedHtml.includes("搜尋結果")) {
                         continue;
                     }
 
                     querySuccess = true;
-                    const htmlStr = rawHtml.replace(/\s+/g, '');
-                    
-                    // 檢查是否查無此書
-                    if (htmlStr.includes("找不到符合的商品") || 
-                        htmlStr.includes("查無相關商品") || 
-                        htmlStr.includes("沒有找到任何符合的資料") || 
-                        htmlStr.includes("沒有符合的搜尋結果") || 
-                        htmlStr.includes("您查詢的關鍵字沒有符合的商品") ||
-                        htmlStr.includes("抱歉，沒有找到")) {
-                        
-                        // 若查無此書，且標題本身也沒寫真/限制級關鍵字，則填"無"
-                        if (result.length === 0) return "無";
-                        else return result.join("/");
-                    }
+                    const htmlStr = decodedHtml.replace(/\s+/g, '');
+                    const textOnly = decodedHtml.replace(/<[^>]+>/g, '').replace(/\s+/g, '');
+                    const citeNotFound =
+                        textOnly.includes("搜尋結果：共0筆") ||
+                        textOnly.includes("共0筆，共0頁") ||
+                        textOnly.includes("查無相關商品") ||
+                        textOnly.includes("找不到符合的商品");
 
-                    // 從三民書局的畫面判斷：圖片上有「限制級」、「18+」、「限制級商品」的標籤
-                    if (!result.includes("限制級")) {
-                        if (
-                            htmlStr.includes("限制級商品") || 
-                            htmlStr.includes(">18+<") ||
-                            htmlStr.includes("18禁") ||
-                            htmlStr.includes("級別:限制級") || 
-                            htmlStr.includes("級別：限制級") ||
-                            />[^<]*(限制級|十八歲以下禁止|未滿18歲)[^>]*</i.test(rawHtml)
-                        ) {
-                            result.push("限制級");
-                        }
+                    if (!citeNotFound && (textOnly.includes("搜尋結果：共") || textOnly.includes("放入購物車"))) {
+                        bookFoundInStore = true;
+                        // 只截取搜尋結果區塊，避免城邦上方全站導覽列的「寫真」書展選單造成誤判
+                        const startIdx = decodedHtml.indexOf("搜尋關鍵字");
+                        const endIdx = decodedHtml.indexOf("關於城邦");
+                        const citeBody = startIdx !== -1
+                            ? decodedHtml.substring(startIdx, endIdx !== -1 ? endIdx : undefined)
+                            : decodedHtml;
+                        detectSpecialKeywords(citeBody, citeBody.replace(/\s+/g, ''), result);
                     }
-                    
-                    if (!result.includes("寫真書")) {
-                        if (
-                            htmlStr.includes(">寫真<") || 
-                            htmlStr.includes("分類:寫真") || 
-                            htmlStr.includes("分類：寫真") ||
-                            htmlStr.includes("寫真集") ||
-                            htmlStr.includes("寫真書") ||
-                            htmlStr.includes("偶像寫真") ||
-                            />[^<]*(寫真集|寫真書|偶像寫真)[^>]*</i.test(rawHtml)
-                        ) {
-                            result.push("寫真書");
-                        }
-                    }
-
-                    break; // 成功抓取該 URL 的資料就可脫離 proxy 迴圈
-                } catch(e) { }
+                    break;
+                } catch (e) { }
             }
-            if (querySuccess) break;
+        }
+
+        if (!bookFoundInStore && querySuccess) {
+            return result.length > 0 ? result.join("/") : "無";
         }
         
         return result.length > 0 ? result.join("/") : (querySuccess ? '否' : '查詢失敗');

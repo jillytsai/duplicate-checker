@@ -438,17 +438,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 row["寫真書或限制級圖書"] = specialProperty;
             }
 
-            // Append field to data (拆成四欄：館藏地、索書號、館藏條碼、館藏狀態)
+            // Append field to data (拆成四欄：館藏地、索書號、館藏條碼、館藏狀態；匯出 Excel 時若有多筆館藏會展開為多列)
             row["是否為複本"] = isDuplicate;
             row["館藏數量"] = collectionQuantity;
-            row["館藏地"] = holdings.length > 0 ? holdings.map(h => {
-                const tag = h.seqNum ? `#${h.seqNum}${h.pubYear ? `(${h.pubYear})` : ''} ` : (h.pubYear ? `(${h.pubYear}) ` : '');
-                return `${tag}${h.location}`;
-            }).join("\n") : "";
-            row["索書號"] = holdings.length > 0 ? holdings.map(h => h.callNumber).join("\n") : "";
-            row["館藏條碼"] = holdings.length > 0 ? holdings.map(h => h.barcode).join("\n") : "";
-            row["館藏狀態"] = holdings.length > 0 ? holdings.map(h => h.status).join("\n") : "";
-            if (nptuUrl) row["系統連結"] = nptuUrl;
+            row["館藏地"] = "";
+            row["索書號"] = "";
+            row["館藏條碼"] = "";
+            row["館藏狀態"] = "";
+            row["系統連結"] = nptuUrl || "";
+            row["__SYS_HOLDINGS"] = holdings;
+            row["__SYS_NPTU_URL"] = nptuUrl || "";
             processedData.push(row);
             createOrUpdateRow(i, displayBarcode, title, author, publisher, pubYear, specialProperty, rowStatus, statusText, collectionQuantity, nptuUrl, holdings);
         }
@@ -911,23 +910,42 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const newWorkbook = XLSX.utils.book_new();
 
-        // 將資料依照 __sheetName 分組
+        // 將資料依照 __sheetName 分組，若有多筆館藏則展開為多列
         const sheetsData = {};
         for (const row of processedData) {
             const sn = row['__sheetName'] || 'Sheet1';
             if (!sheetsData[sn]) sheetsData[sn] = [];
-            const exportRow = { ...row };
-            delete exportRow['__sheetName']; // 移出內部分頁標記
-            delete exportRow['__SYS_ISBN'];
-            delete exportRow['__SYS_EISSN'];
-            delete exportRow['__SYS_EISBN'];
-            delete exportRow['__SYS_PISBN'];
-            delete exportRow['__SYS_TITLE'];
-            delete exportRow['__SYS_AUTHOR'];
-            delete exportRow['__SYS_PUBLISHER'];
-            delete exportRow['__SYS_PUBYEAR'];
-            delete exportRow['__SYS_SEQ_KEY'];
-            sheetsData[sn].push(exportRow);
+            const holdings = row['__SYS_HOLDINGS'] || [];
+            const nptuUrl = row['__SYS_NPTU_URL'] || "";
+
+            const baseRow = { ...row };
+            delete baseRow['__sheetName']; // 移出內部分頁標記
+            delete baseRow['__SYS_ISBN'];
+            delete baseRow['__SYS_EISSN'];
+            delete baseRow['__SYS_EISBN'];
+            delete baseRow['__SYS_PISBN'];
+            delete baseRow['__SYS_TITLE'];
+            delete baseRow['__SYS_AUTHOR'];
+            delete baseRow['__SYS_PUBLISHER'];
+            delete baseRow['__SYS_PUBYEAR'];
+            delete baseRow['__SYS_SEQ_KEY'];
+            delete baseRow['__SYS_HOLDINGS'];
+            delete baseRow['__SYS_NPTU_URL'];
+
+            if (holdings.length > 0) {
+                for (const h of holdings) {
+                    const hRow = { ...baseRow };
+                    const tag = h.seqNum ? `#${h.seqNum}${h.pubYear ? `(${h.pubYear})` : ''} ` : (h.pubYear ? `(${h.pubYear}) ` : '');
+                    hRow["館藏地"] = `${tag}${h.location}`;
+                    hRow["索書號"] = h.callNumber && h.callNumber !== '-' ? h.callNumber : "";
+                    hRow["館藏條碼"] = h.barcode && h.barcode !== '-' ? h.barcode : "";
+                    hRow["館藏狀態"] = h.status && h.status !== '-' ? h.status : "";
+                    hRow["系統連結"] = h.detailUrl || nptuUrl || "";
+                    sheetsData[sn].push(hRow);
+                }
+            } else {
+                sheetsData[sn].push(baseRow);
+            }
         }
 
         // 為每個分組建立 Sheet

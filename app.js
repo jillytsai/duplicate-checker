@@ -429,7 +429,10 @@ document.addEventListener('DOMContentLoaded', () => {
             row["寫真書或限制級圖書"] = specialProperty;
             row["是否為複本"] = isDuplicate;
             row["館藏數量"] = collectionQuantity;
-            row["館藏地"] = holdings.length > 0 ? holdings.map(h => h.location).join("\n") : "";
+            row["館藏地"] = holdings.length > 0 ? holdings.map(h => {
+                const tag = h.seqNum ? `#${h.seqNum}${h.pubYear ? `(${h.pubYear})` : ''} ` : (h.pubYear ? `(${h.pubYear}) ` : '');
+                return `${tag}${h.location}`;
+            }).join("\n") : "";
             row["索書號"] = holdings.length > 0 ? holdings.map(h => h.callNumber).join("\n") : "";
             row["館藏條碼"] = holdings.length > 0 ? holdings.map(h => h.barcode).join("\n") : "";
             row["館藏狀態"] = holdings.length > 0 ? holdings.map(h => h.status).join("\n") : "";
@@ -488,8 +491,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const statusColor = isAvailable ? '#059669' : '#d97706';
                 const statusBg = isAvailable ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.12)';
                 const dividerStyle = idx > 0 ? 'border-top:1px dashed #e5e7eb;padding-top:6px;margin-top:6px;' : '';
+                const seqLabel = h.seqNum ? `#${h.seqNum}${h.pubYear ? `(${h.pubYear})` : ''}` : (h.pubYear ? `(${h.pubYear})` : '');
+                const seqBadge = seqLabel
+                    ? (h.detailUrl
+                        ? `<a href="${h.detailUrl}" target="nptu_collection_win" rel="noopener noreferrer" onclick="const w=window.open(this.href, 'nptu_collection_win', 'width=1100,height=800,scrollbars=yes,resizable=yes'); if(w) w.focus(); return false;" title="點擊直接開啟第 ${h.seqNum || 1} 筆詳細書目" style="display:inline-block;padding:0px 5px;border-radius:4px;font-size:0.75rem;font-weight:700;color:#4f46e5;background:rgba(79,70,229,0.1);text-decoration:none;white-space:nowrap;">${seqLabel}</a>`
+                        : `<span style="display:inline-block;padding:0px 5px;border-radius:4px;font-size:0.75rem;font-weight:700;color:#4f46e5;background:rgba(79,70,229,0.1);white-space:nowrap;">${seqLabel}</span>`)
+                    : '';
+
                 return `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;font-size:0.84rem;line-height:1.35;${dividerStyle}">
                     <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                        ${seqBadge}
                         <span style="font-weight:600;color:#374151;white-space:nowrap;">${h.location}</span>
                         <span style="display:inline-block;padding:0px 5px;border-radius:4px;font-size:0.75rem;font-weight:600;color:${statusColor};background:${statusBg};white-space:nowrap;">${h.status}</span>
                     </div>
@@ -628,22 +639,59 @@ document.addEventListener('DOMContentLoaded', () => {
                         return { found: false, quantity: "0", url: "", holdings: [] };
                     }
 
-                    // 擷取頁面上的書目 mid 並查詢館藏明細 (館藏地、條碼號、館藏狀態)
-                    const mids = [...new Set([
-                        ...[...redirectedUrl.matchAll(/mid=(\d+)/gi)].map(m => m[1]),
-                        ...[...html.matchAll(/content\.cfm\?mid=(\d+)/gi)].map(m => m[1])
-                    ])];
+                    // 解析搜尋結果頁面上每一筆書目的序號 (#1, #2...)、mid 與出版年月
+                    const records = [];
+                    const parts = html.split(/id=["']siskit_target_(\d+)["']/i);
+                    if (parts.length > 1) {
+                        for (let pIdx = 1; pIdx < parts.length; pIdx += 2) {
+                            const mid = parts[pIdx];
+                            const block = parts[pIdx + 1].split(/<!--\s*class=["']book-box["']\s*End\s*-->/i)[0];
+                            const cleanBlock = block.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ');
+                            const pubMatch = cleanBlock.match(/出版資料\s*[:：]\s*([^\n]*?)(?=ISBN|館藏|$)/i);
+                            const pubStr = pubMatch ? pubMatch[1].trim() : '';
+                            const yearMatch = pubStr.match(/(19\d{2}|20\d{2})(?:[\.\/\-]\d{1,2})?/);
+                            const itemQtyMatch = cleanBlock.match(/館藏(?:量|數量)?\s*\(\s*(\d+)\s*\)/);
+                            records.push({
+                                seqNum: Math.floor(pIdx / 2) + 1,
+                                mid,
+                                pubYear: yearMatch ? yearMatch[0] : '',
+                                qty: itemQtyMatch ? parseInt(itemQtyMatch[1], 10) : null
+                            });
+                        }
+                    } else {
+                        const fallbackMids = [...new Set([
+                            ...[...redirectedUrl.matchAll(/mid=(\d+)/gi)].map(m => m[1]),
+                            ...[...html.matchAll(/content\.cfm\?mid=(\d+)/gi)].map(m => m[1])
+                        ])];
+                        fallbackMids.forEach((mid, idx) => {
+                            records.push({ seqNum: idx + 1, mid, pubYear: '', qty: null });
+                        });
+                    }
 
                     let holdings = [];
-                    for (let mIdx = 0; mIdx < Math.min(mids.length, 5); mIdx++) {
-                        const items = await fetchHoldingsByMid(mids[mIdx]);
-                        if (items.length > 0) {
-                            holdings = items;
-                            if (!quantityStr || quantityStr === "0") {
-                                quantityStr = String(items.length);
-                            }
-                            break;
+                    const maxCheck = Math.min(records.length, 5);
+                    for (let rIdx = 0; rIdx < maxCheck; rIdx++) {
+                        const rec = records[rIdx];
+                        // 若搜尋列表已明確標示該筆館藏量 (0) 且還有其他筆有館藏，則跳過無館藏的空紀錄
+                        if (rec.qty === 0 && records.some(r => r.qty === null || r.qty > 0)) {
+                            continue;
                         }
+                        const items = await fetchHoldingsByMid(rec.mid);
+                        if (items.length > 0) {
+                            const detailUrl = `https://webpac.nptu.edu.tw/webpac/content.cfm?mid=${encodeURIComponent(rec.mid)}`;
+                            items.forEach(item => {
+                                holdings.push({
+                                    ...item,
+                                    seqNum: rec.seqNum,
+                                    pubYear: rec.pubYear,
+                                    detailUrl
+                                });
+                            });
+                        }
+                    }
+
+                    if (holdings.length > 0) {
+                        quantityStr = String(holdings.length);
                     }
 
                     return { found: true, quantity: quantityStr || "1+", url: searchUrl, holdings };

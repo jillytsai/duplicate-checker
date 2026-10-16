@@ -438,11 +438,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 row["寫真書或限制級圖書"] = specialProperty;
             }
 
-            // Append field to data (拆成四欄：館藏地、索書號、館藏條碼、館藏狀態；匯出 Excel 時若有多筆館藏會展開為多列)
+            // Append field to data (拆成四欄：館藏地、館藏索書號、館藏條碼、館藏狀態；匯出 Excel 時前面欄位整合為1列，後面館藏展開為多列)
+            if ("索書號" in row && (!row["索書號"] || String(row["索書號"]).trim() === "") && holdings.length > 0) {
+                const bestHolding = holdings.find(h => h.callNumber && h.callNumber !== '-' && h.callNumber.includes(' ')) || holdings.find(h => h.callNumber && h.callNumber !== '-');
+                if (bestHolding) {
+                    row["索書號"] = bestHolding.callNumber;
+                }
+            }
             row["是否為複本"] = isDuplicate;
             row["館藏數量"] = collectionQuantity;
             row["館藏地"] = "";
-            row["索書號"] = "";
+            row["館藏索書號"] = "";
             row["館藏條碼"] = "";
             row["館藏狀態"] = "";
             row["系統連結"] = nptuUrl || "";
@@ -909,12 +915,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (processedData.length === 0) return;
         
         const newWorkbook = XLSX.utils.book_new();
+        const holdingCols = new Set(["館藏地", "館藏索書號", "館藏條碼", "館藏狀態", "系統連結"]);
 
-        // 將資料依照 __sheetName 分組，若有多筆館藏則展開為多列
+        // 將資料依照 __sheetName 分組；前面書目欄位整合為 1 列（跨列合併），後面館藏欄位展開為多列
         const sheetsData = {};
+        const sheetsMergeRanges = {};
         for (const row of processedData) {
             const sn = row['__sheetName'] || 'Sheet1';
-            if (!sheetsData[sn]) sheetsData[sn] = [];
+            if (!sheetsData[sn]) {
+                sheetsData[sn] = [];
+                sheetsMergeRanges[sn] = [];
+            }
             const holdings = row['__SYS_HOLDINGS'] || [];
             const nptuUrl = row['__SYS_NPTU_URL'] || "";
 
@@ -933,11 +944,25 @@ document.addEventListener('DOMContentLoaded', () => {
             delete baseRow['__SYS_NPTU_URL'];
 
             if (holdings.length > 0) {
-                for (const h of holdings) {
-                    const hRow = { ...baseRow };
+                // Worksheet row index (Row 0 是標題列，因此資料列從 length + 1 開始)
+                const startR = sheetsData[sn].length + 1;
+                const endR = startR + holdings.length - 1;
+                if (holdings.length > 1) {
+                    sheetsMergeRanges[sn].push({ startR, endR });
+                }
+
+                for (let idx = 0; idx < holdings.length; idx++) {
+                    const h = holdings[idx];
+                    const hRow = {};
+                    for (const key of Object.keys(baseRow)) {
+                        if (!holdingCols.has(key)) {
+                            // 前面欄位只在第 1 列放值，其餘列留空以便合併為 1 列
+                            hRow[key] = idx === 0 ? baseRow[key] : "";
+                        }
+                    }
                     const tag = h.seqNum ? `#${h.seqNum}${h.pubYear ? `(${h.pubYear})` : ''} ` : (h.pubYear ? `(${h.pubYear}) ` : '');
                     hRow["館藏地"] = `${tag}${h.location}`;
-                    hRow["索書號"] = h.callNumber && h.callNumber !== '-' ? h.callNumber : "";
+                    hRow["館藏索書號"] = h.callNumber && h.callNumber !== '-' ? h.callNumber : "";
                     hRow["館藏條碼"] = h.barcode && h.barcode !== '-' ? h.barcode : "";
                     hRow["館藏狀態"] = h.status && h.status !== '-' ? h.status : "";
                     hRow["系統連結"] = h.detailUrl || nptuUrl || "";
@@ -963,14 +988,31 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
 
+                // 設定前面欄位跨列合併（整合為 1 列），後面館藏欄位維持多列
+                const mergeRanges = sheetsMergeRanges[sheetName] || [];
+                if (mergeRanges.length > 0) {
+                    newWorksheet['!merges'] = newWorksheet['!merges'] || [];
+                    for (const { startR, endR } of mergeRanges) {
+                        for (let C = range.s.c; C <= range.e.c; ++C) {
+                            const header = headers[C];
+                            if (!holdingCols.has(header)) {
+                                newWorksheet['!merges'].push({
+                                    s: { r: startR, c: C },
+                                    e: { r: endR, c: C }
+                                });
+                            }
+                        }
+                    }
+                }
+
                 for (let R = range.s.r + 1; R <= range.e.r; ++R) {
                     for (let C = range.s.c; C <= range.e.c; ++C) {
                         const cellRef = XLSX.utils.encode_cell({ c: C, r: R });
                         const cell = newWorksheet[cellRef];
-                        if (!cell || !cell.v) continue;
+                        if (!cell) continue;
 
                         const header = headers[C];
-                        const val = String(cell.v);
+                        const val = cell.v !== undefined ? String(cell.v) : "";
                         let shouldBeRed = false;
 
                         if (header === '是否為複本' && val.includes('是')) {
@@ -983,23 +1025,21 @@ document.addEventListener('DOMContentLoaded', () => {
                             shouldBeRed = true;
                         }
 
+                        cell.s = cell.s || {};
+                        cell.s.alignment = { vertical: "center" };
+
                         if (shouldBeRed) {
-                            cell.s = {
-                                font: { color: { rgb: "FF0000" }, bold: true }
-                            };
+                            cell.s.font = { color: { rgb: "FF0000" }, bold: true };
                         }
 
-                        // 確保館藏條碼與索書號以純文字格式儲存（避免長數字變成科學記號），且支援多筆換行顯示
-                        if (header === '館藏地' || header === '索書號' || header === '館藏條碼' || header === '館藏狀態') {
+                        // 確保館藏條碼與索書號以純文字格式儲存（避免長數字變成科學記號）
+                        if (header === '館藏地' || header === '館藏索書號' || header === '索書號' || header === '館藏條碼' || header === '館藏狀態') {
                             cell.t = 's';
-                            cell.s = cell.s || {};
-                            cell.s.alignment = { wrapText: true, vertical: "center" };
                         }
                         
                         // 設定「系統連結」欄位為可點擊超連結的樣式
                         if (header === '系統連結' && val && val.startsWith('http')) {
                             cell.l = { Target: val };
-                            cell.s = cell.s || {};
                             cell.s.font = cell.s.font || {};
                             cell.s.font.color = { rgb: "0563C1" };
                             cell.s.font.underline = true;

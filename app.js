@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const downloadBtn = document.getElementById('download-btn');
     const resetBtn = document.getElementById('reset-btn');
     const stopBtn = document.getElementById('stop-btn');
+    const enableSpecialCheck = document.getElementById('enable-special-check');
+    const thSpecial = document.getElementById('th-special');
 
     let originalWorkbook = null;
     let targetSheetName = null;
@@ -20,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let authorKey = null;
     let publisherKey = null;
     let isProcessing = false;
+    let shouldCheckSpecial = false;
 
     // Drag and drop setup
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -248,6 +251,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Checking flow
     async function startProcessing() {
+        shouldCheckSpecial = enableSpecialCheck ? enableSpecialCheck.checked : false;
+        if (thSpecial) {
+            thSpecial.style.display = shouldCheckSpecial ? '' : 'none';
+        }
+
         dropzone.style.display = 'none';
         processingPanel.style.display = 'block';
         resultsPanel.style.display = 'block';
@@ -303,7 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let rowStatus = "fetching";
             let statusText = "查詢中...";
             let isDuplicate = "否"; 
-            let specialProperty = "查詢中...";
+            let specialProperty = shouldCheckSpecial ? "查詢中..." : "-";
             let collectionQuantity = "查詢中...";
             let nptuUrl = "";
             let holdings = [];
@@ -393,42 +401,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 collectionQuantity = "錯誤";
             }
 
-            processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查寫真/限制級] ${displayBarcode}`;
-            let isbnsToCheck = [];
-            if (valIsbn) isbnsToCheck.push(valIsbn);
-            if (valEisbn) isbnsToCheck.push(valEisbn);
-            if (valPisbn) isbnsToCheck.push(valPisbn);
+            if (shouldCheckSpecial) {
+                processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查寫真/限制級] ${displayBarcode}`;
+                let isbnsToCheck = [];
+                if (valIsbn) isbnsToCheck.push(valIsbn);
+                if (valEisbn) isbnsToCheck.push(valEisbn);
+                if (valPisbn) isbnsToCheck.push(valPisbn);
 
-            try {
-                if (isbnsToCheck.length === 0) {
-                    specialProperty = await checkSpecialProperty("", title);
-                } else {
-                    let lastResult = "無";
-                    for (let idx = 0; idx < isbnsToCheck.length; idx++) {
-                        const currentIsbn = isbnsToCheck[idx];
-                        try {
-                            if (idx > 0 || i > 0) await new Promise(r => setTimeout(r, 600));
-                            let res = await checkSpecialProperty(currentIsbn, title);
-                            if (res !== "無" && res !== "查詢失敗") {
-                                lastResult = res;
-                                break; // Found photo book or restricted!
+                try {
+                    if (isbnsToCheck.length === 0) {
+                        specialProperty = await checkSpecialProperty("", title);
+                    } else {
+                        let lastResult = "無";
+                        for (let idx = 0; idx < isbnsToCheck.length; idx++) {
+                            const currentIsbn = isbnsToCheck[idx];
+                            try {
+                                if (idx > 0) await new Promise(r => setTimeout(r, 400));
+                                let res = await checkSpecialProperty(currentIsbn, title);
+                                if (res !== "無" && res !== "查詢失敗") {
+                                    lastResult = res;
+                                    break; // Found photo book or restricted!
+                                }
+                                if (res === "無") {
+                                    lastResult = "無";
+                                }
+                            } catch (e) {
+                                console.error(`查詢 ISBN ${currentIsbn} 特殊屬性失敗:`, e);
+                                if (lastResult === "無") lastResult = "查詢失敗";
                             }
-                            if (res === "無") {
-                                lastResult = "無";
-                            }
-                        } catch (e) {
-                            console.error(`查詢 ISBN ${currentIsbn} 特殊屬性失敗:`, e);
-                            if (lastResult === "無") lastResult = "查詢失敗";
                         }
+                        specialProperty = lastResult;
                     }
-                    specialProperty = lastResult;
+                } catch (err) {
+                    specialProperty = "查詢失敗";
                 }
-            } catch (err) {
-                specialProperty = "查詢失敗";
+                row["寫真書或限制級圖書"] = specialProperty;
             }
 
             // Append field to data (拆成四欄：館藏地、索書號、館藏條碼、館藏狀態)
-            row["寫真書或限制級圖書"] = specialProperty;
             row["是否為複本"] = isDuplicate;
             row["館藏數量"] = collectionQuantity;
             row["館藏地"] = holdings.length > 0 ? holdings.map(h => {
@@ -519,7 +529,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <td title="${authorTooltip}">${displayAuthor || '-'}</td>
             <td title="${publisherTooltip}">${displayPublisher || '-'}</td>
             <td>${displayPubYear}</td>
-            <td><span class="badge" style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:0.9em;color:${(specialProperty.includes('限制級') || specialProperty.includes('寫真書'))?'#d32f2f':'#666'}">${specialProperty || '-'}</span></td>
+            <td style="${shouldCheckSpecial ? '' : 'display:none;'}"><span class="badge" style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:0.9em;color:${(specialProperty.includes('限制級') || specialProperty.includes('寫真書'))?'#d32f2f':'#666'}">${specialProperty || '-'}</span></td>
             <td><span class="status status-${statusClass}" style="${isDuplicateRed ? 'color: #d32f2f; background: rgba(211,47,47,0.1);' : ''}">${icon} ${statusText}</span></td>
             <td style="text-align:center;font-weight:bold;color:${isQtyRed ? '#d32f2f' : '#4f46e5'};">${quantity}</td>
             <td>${holdingsHtml}</td>
@@ -782,7 +792,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 1. 優先查詢：金石堂網路書店 (Kingstone) — 同時具有限制級圖示 (restricted.webp) 與詳細分類 (性感寫真/海外偶像書)
         try {
             const ksUrl = `https://www.kingstone.com.tw/search/key/${encodeURIComponent(isbn)}`;
-            const ksRes = await fetchWithTimeout(ksUrl, 8000);
+            const ksRes = await fetchWithTimeout(ksUrl, 4500);
             if (ksRes.ok) {
                 const rawKs = await ksRes.text();
                 const decodedKs = decodeHtmlEntities(rawKs);
@@ -806,11 +816,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (e) { }
 
-        // 2. 優先查詢：誠品線上 (Eslite API) — 瀏覽器端具備原生 TLS 指紋可直接查詢
-        if (!bookFoundInStore || result.length === 0) {
+        // 2. 優先查詢：誠品線上 (Eslite API) — 當金石堂查無此書時查詢
+        if (!bookFoundInStore) {
             try {
                 const esUrl = `https://athena.eslite.com/api/v2/search?q=${encodeURIComponent(isbn)}&size=10&start=0`;
-                const esRes = await fetchWithTimeout(esUrl, 5000);
+                const esRes = await fetchWithTimeout(esUrl, 3500);
                 if (esRes.ok) {
                     const rawEs = await esRes.text();
                     if (!rawEs.includes("Cloudflare") && !rawEs.includes("Attention Required") && rawEs.trim().startsWith("{")) {
@@ -826,90 +836,67 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { }
         }
 
-        // 3. 補充查詢：三民書局 (Sanmin) — 補充檢查適讀年齡（限制級）與書籍簡介
-        if (!bookFoundInStore || !result.includes("限制級") || !result.includes("寫真書")) {
-            const sanminUrl = `https://www.sanmin.com.tw/search?isbn=${encodeURIComponent(isbn)}`;
-            const sanminProxies = [
-                sanminUrl,
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(sanminUrl)}`,
-                `https://corsproxy.io/?${encodeURIComponent(sanminUrl)}`
-            ];
-
-            for (const proxy of sanminProxies) {
-                try {
-                    const res = await fetchWithTimeout(proxy, 8000);
-                    if (!res.ok) continue;
-
+        // 3. 補充查詢：三民書局 (Sanmin) — 當金石堂與誠品皆查無此書時查詢
+        if (!bookFoundInStore) {
+            try {
+                const sanminUrl = `https://www.sanmin.com.tw/search?isbn=${encodeURIComponent(isbn)}`;
+                const res = await fetchWithTimeout(sanminUrl, 4000);
+                if (res.ok) {
                     const rawHtml = await res.text();
                     const decodedHtml = decodeHtmlEntities(rawHtml);
 
-                    if (!decodedHtml.includes("三民") && !decodedHtml.includes("sanmin") && !decodedHtml.includes("商品") && !decodedHtml.includes("查詢")) {
-                        continue;
+                    if (decodedHtml.includes("三民") || decodedHtml.includes("sanmin") || decodedHtml.includes("商品") || decodedHtml.includes("查詢")) {
+                        querySuccess = true;
+                        const htmlStr = decodedHtml.replace(/\s+/g, '');
+
+                        const sanminNotFound =
+                            htmlStr.includes("請以普遍的關鍵字重新搜尋") ||
+                            htmlStr.includes("請嘗試使用其他語義相近的關鍵字") ||
+                            htmlStr.includes("找不到符合的商品") || 
+                            htmlStr.includes("查無相關商品") || 
+                            htmlStr.includes("沒有找到任何符合的資料") || 
+                            htmlStr.includes("沒有符合的搜尋結果") || 
+                            htmlStr.includes("您查詢的關鍵字沒有符合的商品") ||
+                            htmlStr.includes("抱歉，沒有找到");
+
+                        if (!sanminNotFound) {
+                            bookFoundInStore = true;
+                            detectSpecialKeywords(decodedHtml, htmlStr, result);
+                        }
                     }
-
-                    querySuccess = true;
-                    const htmlStr = decodedHtml.replace(/\s+/g, '');
-
-                    const sanminNotFound =
-                        htmlStr.includes("請以普遍的關鍵字重新搜尋") ||
-                        htmlStr.includes("請嘗試使用其他語義相近的關鍵字") ||
-                        htmlStr.includes("找不到符合的商品") || 
-                        htmlStr.includes("查無相關商品") || 
-                        htmlStr.includes("沒有找到任何符合的資料") || 
-                        htmlStr.includes("沒有符合的搜尋結果") || 
-                        htmlStr.includes("您查詢的關鍵字沒有符合的商品") ||
-                        htmlStr.includes("抱歉，沒有找到");
-
-                    if (!sanminNotFound) {
-                        bookFoundInStore = true;
-                        detectSpecialKeywords(decodedHtml, htmlStr, result);
-                    }
-
-                    break;
-                } catch (e) { }
-            }
+                }
+            } catch (e) { }
         }
 
         // 4. 備援查詢：城邦讀書花園 (cite.com.tw) — 針對春光/城邦獨家或同人特裝本 (如 R18 標示)
         if (!bookFoundInStore) {
-            const citeUrl = `https://www.cite.com.tw/search_result?keywords=${encodeURIComponent(isbn)}`;
-            const citeProxies = [
-                citeUrl,
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(citeUrl)}`,
-                `https://corsproxy.io/?${encodeURIComponent(citeUrl)}`
-            ];
-
-            for (const proxy of citeProxies) {
-                try {
-                    const res = await fetchWithTimeout(proxy, 8000);
-                    if (!res.ok) continue;
-
+            try {
+                const citeUrl = `https://www.cite.com.tw/search_result?keywords=${encodeURIComponent(isbn)}`;
+                const res = await fetchWithTimeout(citeUrl, 4000);
+                if (res.ok) {
                     const rawHtml = await res.text();
                     const decodedHtml = decodeHtmlEntities(rawHtml);
-                    if (!decodedHtml.includes("城邦") && !decodedHtml.includes("cite") && !decodedHtml.includes("搜尋結果")) {
-                        continue;
-                    }
+                    if (decodedHtml.includes("城邦") || decodedHtml.includes("cite") || decodedHtml.includes("搜尋結果")) {
+                        querySuccess = true;
+                        const textOnly = decodedHtml.replace(/<[^>]+>/g, '').replace(/\s+/g, '');
+                        const citeNotFound =
+                            textOnly.includes("搜尋結果：共0筆") ||
+                            textOnly.includes("共0筆，共0頁") ||
+                            textOnly.includes("查無相關商品") ||
+                            textOnly.includes("找不到符合的商品");
 
-                    querySuccess = true;
-                    const textOnly = decodedHtml.replace(/<[^>]+>/g, '').replace(/\s+/g, '');
-                    const citeNotFound =
-                        textOnly.includes("搜尋結果：共0筆") ||
-                        textOnly.includes("共0筆，共0頁") ||
-                        textOnly.includes("查無相關商品") ||
-                        textOnly.includes("找不到符合的商品");
-
-                    if (!citeNotFound && (textOnly.includes("搜尋結果：共") || textOnly.includes("放入購物車"))) {
-                        bookFoundInStore = true;
-                        const startIdx = decodedHtml.indexOf("搜尋關鍵字");
-                        const endIdx = decodedHtml.indexOf("關於城邦");
-                        const citeBody = startIdx !== -1
-                            ? decodedHtml.substring(startIdx, endIdx !== -1 ? endIdx : undefined)
-                            : decodedHtml;
-                        detectSpecialKeywords(citeBody, citeBody.replace(/\s+/g, ''), result);
+                        if (!citeNotFound && (textOnly.includes("搜尋結果：共") || textOnly.includes("放入購物車"))) {
+                            bookFoundInStore = true;
+                            const startIdx = decodedHtml.indexOf("搜尋關鍵字");
+                            const endIdx = decodedHtml.indexOf("關於城邦");
+                            const citeBody = startIdx !== -1
+                                ? decodedHtml.substring(startIdx, endIdx !== -1 ? endIdx : undefined)
+                                : decodedHtml;
+                            detectSpecialKeywords(citeBody, citeBody.replace(/\s+/g, ''), result);
+                        }
                     }
-                    break;
-                } catch (e) { }
-            }
+                }
+            } catch (e) { }
         }
 
         if (!bookFoundInStore && querySuccess) {

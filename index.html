@@ -22,7 +22,7 @@
                 <i class="ph-duotone ph-magnifying-glass"></i>
                 <h1>NPTU 複本查詢工具</h1>
             </div>
-            <p class="subtitle">上傳 Excel，透過 ISBN 與書名自動比對館藏系統，檢查是否為複本。<span style="font-size:0.8em;color:#4f46e5;background:rgba(79,70,229,0.1);padding:2px 8px;border-radius:12px;margin-left:6px;font-weight:600;">v1016.6</span></p>
+            <p class="subtitle">上傳 Excel，透過 ISBN 與書名自動比對館藏系統，檢查是否為複本。<span style="font-size:0.8em;color:#4f46e5;background:rgba(79,70,229,0.1);padding:2px 8px;border-radius:12px;margin-left:6px;font-weight:600;">v1016.7</span></p>
         </header>
 
         <main class="main-content">
@@ -32,6 +32,12 @@
                     <i class="ph-duotone ph-file-xls dropzone-icon"></i>
                     <h2>上傳您的 Excel 檔案</h2>
                     <p>請確認檔案內需有 <strong>ISBN / ISSN / EISSN</strong> 或 <strong>書名 / 刊名</strong> 欄位</p>
+                    <div style="margin: 16px 0 6px;">
+                        <label for="enable-special-check" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; background: white; border: 1.5px solid #c7d2fe; border-radius: 8px; cursor: pointer; font-size: 0.95rem; font-weight: 500; color: #374151; box-shadow: 0 1px 3px rgba(79,70,229,0.08); user-select: none;">
+                            <input type="checkbox" id="enable-special-check" style="width: 18px; height: 18px; accent-color: #4f46e5; cursor: pointer;" />
+                            <span>同時檢查是否為<strong style="color:#4f46e5;">寫真書或限制級圖書</strong>（勾選後會額外查詢網路書店）</span>
+                        </label>
+                    </div>
                     <label for="file-upload" class="upload-btn">
                         選擇檔案
                         <input type="file" id="file-upload" accept=".xlsx, .xls, .csv" />
@@ -78,7 +84,7 @@
                                 <th>作者</th>
                                 <th>出版社</th>
                                 <th>出版年</th>
-                                <th>寫真/限制級</th>
+                                <th id="th-special">寫真/限制級</th>
                                 <th>是否為複本</th>
                                 <th>館藏數量</th>
                                 <th>館藏明細</th>
@@ -95,6 +101,6 @@
     </div>
 
     <!-- Application Logic -->
-    <script src="app.js?v=20261016_6"></script>
+    <script src="app.js?v=20261016_7"></script>
 </body>
 </html>

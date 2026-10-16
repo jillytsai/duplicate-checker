@@ -62,14 +62,70 @@ document.addEventListener('DOMContentLoaded', () => {
         stopBtn.innerHTML = '<i class="ph-bold ph-spinner ph-spin"></i> 正在停止...';
     });
 
+    function fixBig5Pua(str) {
+        if (!str) return "";
+        const map = {
+            0xF6F3: "ー",
+            0xF6F4: "〔",
+            0xF6F5: "〕",
+            0xE0C1: "坂",
+            0xF3AE: "会",
+            0xF3C1: "学",
+            0xE998: "国",
+            0xEA74: "鎮",
+            0xF8F8: ""
+        };
+        let out = "";
+        for (const ch of str) {
+            const cp = ch.codePointAt(0);
+            if (map[cp] !== undefined) {
+                out += map[cp];
+            } else if (cp >= 0xF6F7 && cp <= 0xF749) {
+                out += String.fromCodePoint(cp - 0xF6F7 + 0x3041);
+            } else if (cp >= 0xF74A && cp <= 0xF79F) {
+                out += String.fromCodePoint(cp - 0xF74A + 0x30A1);
+            } else {
+                out += ch;
+            }
+        }
+        return out;
+    }
+
+    function cleanInspireTitle(title, publisher) {
+        if (!title) return "";
+        let t = String(title).trim();
+        const pub = publisher ? String(publisher).trim() : "";
+        if (pub && t.includes(" .- " + pub)) {
+            t = t.split(" .- " + pub)[0].trim();
+        }
+        if (pub && t.includes(" : " + pub)) {
+            t = t.split(" : " + pub)[0].trim();
+        }
+        t = t.replace(/\s*\.-\s*[^:]+:\s*[^,]+,\s*[0-9A-Za-z/\-\u5E74\u6708\u65E5\s]+$/, "");
+        t = t.replace(/\s*:\s*[^:,]+,\s*[0-9A-Za-z/\-\u5E74\u6708\u65E5\s]+$/, "");
+        t = t.replace(/\s*[\(\uFF08](\u7C21\u9AD4\u66F8|\u96FB\u5B50\u66F8|DVD)[\)\uFF09]\s*$/i, "");
+        t = t.replace(/\s+DVD\s*$/i, "");
+        return t.trim();
+    }
+
     // File processing
     function handleFile(file) {
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
                 const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                originalWorkbook = workbook;
+                let workbook;
+                if (file.name && file.name.toLowerCase().endsWith('.csv')) {
+                    let csvText = new TextDecoder('utf-8').decode(data);
+                    if (csvText.includes('\uFFFD')) {
+                        csvText = fixBig5Pua(new TextDecoder('big5').decode(data));
+                    } else {
+                        csvText = fixBig5Pua(csvText);
+                    }
+                    workbook = XLSX.read(csvText, { type: 'string', raw: true });
+                } else {
+                    workbook = XLSX.read(data, { type: 'array' });
+                }
                 originalWorkbook = workbook;
                 excelData = [];
                 let skippedSheets = [];
@@ -200,9 +256,14 @@ document.addEventListener('DOMContentLoaded', () => {
                             rowObj['__SYS_EISSN'] = eissnColIndex !== -1 ? String(rowArr[eissnColIndex] !== undefined ? rowArr[eissnColIndex] : "") : "";
                             rowObj['__SYS_EISBN'] = eisbnColIndex !== -1 ? String(rowArr[eisbnColIndex] !== undefined ? rowArr[eisbnColIndex] : "") : "";
                             rowObj['__SYS_PISBN'] = pisbnColIndex !== -1 ? String(rowArr[pisbnColIndex] !== undefined ? rowArr[pisbnColIndex] : "") : "";
-                            rowObj['__SYS_TITLE'] = titleColIndex !== -1 ? String(rowArr[titleColIndex] !== undefined ? rowArr[titleColIndex] : "") : "";
                             rowObj['__SYS_AUTHOR'] = authorColIndex !== -1 ? String(rowArr[authorColIndex] !== undefined ? rowArr[authorColIndex] : "") : "";
                             rowObj['__SYS_PUBLISHER'] = publisherColIndex !== -1 ? String(rowArr[publisherColIndex] !== undefined ? rowArr[publisherColIndex] : "") : "";
+                            const rawTitleStr = titleColIndex !== -1 ? String(rowArr[titleColIndex] !== undefined ? rowArr[titleColIndex] : "") : "";
+                            rowObj['__SYS_TITLE'] = cleanInspireTitle(rawTitleStr, rowObj['__SYS_PUBLISHER']);
+                            if (titleColIndex !== -1 && rawTitleStr !== rowObj['__SYS_TITLE']) {
+                                const titleHdr = String(headerRow[titleColIndex]).trim() || `__EMPTY_${titleColIndex}`;
+                                rowObj[titleHdr] = rowObj['__SYS_TITLE'];
+                            }
                             
                             let pubYearVal = "";
                             if (pubYearColIndex !== -1) {

@@ -425,11 +425,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 specialProperty = "查詢失敗";
             }
 
-            // Append field to data (拆成三欄：館藏地、館藏條碼、館藏狀態)
+            // Append field to data (拆成四欄：館藏地、索書號、館藏條碼、館藏狀態)
             row["寫真書或限制級圖書"] = specialProperty;
             row["是否為複本"] = isDuplicate;
             row["館藏數量"] = collectionQuantity;
             row["館藏地"] = holdings.length > 0 ? holdings.map(h => h.location).join("\n") : "";
+            row["索書號"] = holdings.length > 0 ? holdings.map(h => h.callNumber).join("\n") : "";
             row["館藏條碼"] = holdings.length > 0 ? holdings.map(h => h.barcode).join("\n") : "";
             row["館藏狀態"] = holdings.length > 0 ? holdings.map(h => h.status).join("\n") : "";
             if (nptuUrl) row["系統連結"] = nptuUrl;
@@ -482,15 +483,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (statusClass === 'fetching') {
             holdingsHtml = '<span style="color:#9ca3af;font-size:0.85em;">查詢中...</span>';
         } else if (holdings && holdings.length > 0) {
-            holdingsHtml = holdings.map(h => {
+            holdingsHtml = holdings.map((h, idx) => {
                 const isAvailable = h.status.includes('在架') || h.status.includes('連線使用');
                 const statusColor = isAvailable ? '#059669' : '#d97706';
                 const statusBg = isAvailable ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.12)';
-                return `<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:0.85rem;line-height:1.6;">
-                    <span style="font-weight:600;color:#374151;">${h.location}</span>
-                    <span style="color:#9ca3af;">/</span>
-                    <span style="font-family:monospace;color:#4b5563;">${h.barcode}</span>
-                    <span style="padding:1px 6px;border-radius:4px;font-size:0.8rem;font-weight:600;color:${statusColor};background:${statusBg};">${h.status}</span>
+                const dividerStyle = idx > 0 ? 'border-top:1px dashed #e5e7eb;padding-top:6px;margin-top:6px;' : '';
+                return `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;font-size:0.84rem;line-height:1.35;${dividerStyle}">
+                    <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                        <span style="font-weight:600;color:#374151;white-space:nowrap;">${h.location}</span>
+                        <span style="display:inline-block;padding:0px 5px;border-radius:4px;font-size:0.75rem;font-weight:600;color:${statusColor};background:${statusBg};white-space:nowrap;">${h.status}</span>
+                    </div>
+                    ${h.callNumber && h.callNumber !== '-' ? `<div style="font-family:monospace;color:#4f46e5;font-size:0.82rem;white-space:nowrap;" title="索書號">${h.callNumber}</div>` : ''}
+                    <div style="font-family:monospace;color:#4b5563;font-size:0.82rem;" title="條碼號">${h.barcode}</div>
                 </div>`;
             }).join('');
         }
@@ -551,11 +555,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         };
                         const barcode = extractField('條碼號：');
                         const location = extractField('典藏地名稱：');
+                        const callNumber = extractField('索書號：');
                         const status = extractField('館藏狀態：');
-                        if (barcode || location || status) {
+                        if (barcode || location || callNumber || status) {
                             holdings.push({
                                 barcode: barcode || '-',
                                 location: location || '-',
+                                callNumber: callNumber || '-',
                                 status: status || '-'
                             });
                         }
@@ -806,8 +812,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             };
                         }
 
-                        // 確保館藏條碼以純文字格式儲存（避免長數字變成科學記號），且支援多筆換行顯示
-                        if (header === '館藏地' || header === '館藏條碼' || header === '館藏狀態') {
+                        // 確保館藏條碼與索書號以純文字格式儲存（避免長數字變成科學記號），且支援多筆換行顯示
+                        if (header === '館藏地' || header === '索書號' || header === '館藏條碼' || header === '館藏狀態') {
                             cell.t = 's';
                             cell.s = cell.s || {};
                             cell.s.alignment = { wrapText: true, vertical: "center" };

@@ -48,7 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Button interactions
-    resetBtn.addEventListener('click', () => location.reload());
+    resetBtn.addEventListener('click', () => {
+        window.location.href = window.location.pathname + '?t=' + Date.now();
+    });
     downloadBtn.addEventListener('click', () => exportExcel());
 
     stopBtn.addEventListener('click', () => {
@@ -718,6 +720,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (
                 htmlStr.includes("限制級商品") || 
                 htmlStr.includes("適讀年齡限制級") ||
+                htmlStr.includes("images/restricted.") ||
+                htmlStr.includes("\"restricted\":true") ||
+                htmlStr.includes("\"is_restricted\":true") ||
                 htmlStr.includes(">18+<") ||
                 htmlStr.includes("18禁") ||
                 htmlStr.includes("18限") ||
@@ -736,7 +741,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 htmlStr.includes(">寫真<") || 
                 htmlStr.includes("分類:寫真") || 
                 htmlStr.includes("分類：寫真") ||
+                htmlStr.includes("性感寫真") ||
+                htmlStr.includes("藝術寫真") ||
                 htmlStr.includes("藝人寫真") ||
+                htmlStr.includes("海外偶像書") ||
+                htmlStr.includes("本國偶像書") ||
                 htmlStr.includes("寫真集") ||
                 htmlStr.includes("寫真書") ||
                 htmlStr.includes("偶像寫真") ||
@@ -745,7 +754,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 htmlStr.includes("全見寫真") ||
                 htmlStr.includes("影像紀實") ||
                 htmlStr.includes("寫真紀實") ||
-                />[^<]*(寫真集|寫真書|偶像寫真|藝人寫真|影像紀實|寫真紀實)[^>]*</i.test(decodedHtml)
+                />[^<]*(寫真集|寫真書|偶像寫真|藝人寫真|性感寫真|影像紀實|寫真紀實)[^>]*</i.test(decodedHtml)
             ) {
                 result.push("寫真書");
             }
@@ -770,51 +779,98 @@ document.addEventListener('DOMContentLoaded', () => {
         let querySuccess = false;
         let bookFoundInStore = false;
 
-        // 1. 優先查詢三民書局
-        const sanminUrl = `https://www.sanmin.com.tw/search?isbn=${encodeURIComponent(isbn)}`;
-        const sanminProxies = [
-            sanminUrl,
-            `https://api.allorigins.win/raw?url=${encodeURIComponent(sanminUrl)}`,
-            `https://corsproxy.io/?${encodeURIComponent(sanminUrl)}`
-        ];
+        // 1. 優先查詢：金石堂網路書店 (Kingstone) — 同時具有限制級圖示 (restricted.webp) 與詳細分類 (性感寫真/海外偶像書)
+        try {
+            const ksUrl = `https://www.kingstone.com.tw/search/key/${encodeURIComponent(isbn)}`;
+            const ksRes = await fetchWithTimeout(ksUrl, 8000);
+            if (ksRes.ok) {
+                const rawKs = await ksRes.text();
+                const decodedKs = decodeHtmlEntities(rawKs);
+                if (decodedKs.includes("金石堂") || decodedKs.includes("kingstone")) {
+                    querySuccess = true;
+                    const ksNotFound =
+                        decodedKs.includes("找不到與") ||
+                        decodedKs.includes("找不到符合") ||
+                        decodedKs.includes("查無此商品");
 
-        for (const proxy of sanminProxies) {
+                    if (!ksNotFound && decodedKs.includes("全館搜尋共計")) {
+                        bookFoundInStore = true;
+                        const sIdx = decodedKs.indexOf("全館搜尋共計");
+                        const eIdx = decodedKs.indexOf("關於我們");
+                        const ksBody = sIdx !== -1
+                            ? decodedKs.substring(sIdx, eIdx !== -1 ? eIdx : undefined)
+                            : decodedKs;
+                        detectSpecialKeywords(ksBody, ksBody.replace(/\s+/g, ''), result);
+                    }
+                }
+            }
+        } catch (e) { }
+
+        // 2. 優先查詢：誠品線上 (Eslite API) — 瀏覽器端具備原生 TLS 指紋可直接查詢
+        if (!bookFoundInStore || result.length === 0) {
             try {
-                const res = await fetchWithTimeout(proxy, 10000);
-                if (!res.ok) continue;
-
-                const rawHtml = await res.text();
-                const decodedHtml = decodeHtmlEntities(rawHtml);
-
-                // 確保真的抓到了網站，而不是代理伺服器的錯誤頁面
-                if (!decodedHtml.includes("三民") && !decodedHtml.includes("sanmin") && !decodedHtml.includes("商品") && !decodedHtml.includes("查詢")) {
-                    continue;
+                const esUrl = `https://athena.eslite.com/api/v2/search?q=${encodeURIComponent(isbn)}&size=10&start=0`;
+                const esRes = await fetchWithTimeout(esUrl, 5000);
+                if (esRes.ok) {
+                    const rawEs = await esRes.text();
+                    if (!rawEs.includes("Cloudflare") && !rawEs.includes("Attention Required") && rawEs.trim().startsWith("{")) {
+                        querySuccess = true;
+                        const decodedEs = decodeHtmlEntities(rawEs);
+                        const esStr = decodedEs.replace(/\s+/g, '');
+                        if (!esStr.includes("\"total\":0") && !esStr.includes("\"hits\":[]")) {
+                            bookFoundInStore = true;
+                            detectSpecialKeywords(decodedEs, esStr, result);
+                        }
+                    }
                 }
-
-                querySuccess = true;
-                const htmlStr = decodedHtml.replace(/\s+/g, '');
-
-                // 檢查三民是否查無此書（含新版提示語「請以普遍的關鍵字重新搜尋」）
-                const sanminNotFound =
-                    htmlStr.includes("請以普遍的關鍵字重新搜尋") ||
-                    htmlStr.includes("請嘗試使用其他語義相近的關鍵字") ||
-                    htmlStr.includes("找不到符合的商品") || 
-                    htmlStr.includes("查無相關商品") || 
-                    htmlStr.includes("沒有找到任何符合的資料") || 
-                    htmlStr.includes("沒有符合的搜尋結果") || 
-                    htmlStr.includes("您查詢的關鍵字沒有符合的商品") ||
-                    htmlStr.includes("抱歉，沒有找到");
-
-                if (!sanminNotFound) {
-                    bookFoundInStore = true;
-                    detectSpecialKeywords(decodedHtml, htmlStr, result);
-                }
-
-                break; // 成功抓取三民回應即可脫離 proxy 迴圈
             } catch (e) { }
         }
 
-        // 2. 若三民書局查無此書，自動改查「城邦讀書花園 (cite.com.tw)」作為備援
+        // 3. 補充查詢：三民書局 (Sanmin) — 補充檢查適讀年齡（限制級）與書籍簡介
+        if (!bookFoundInStore || !result.includes("限制級") || !result.includes("寫真書")) {
+            const sanminUrl = `https://www.sanmin.com.tw/search?isbn=${encodeURIComponent(isbn)}`;
+            const sanminProxies = [
+                sanminUrl,
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(sanminUrl)}`,
+                `https://corsproxy.io/?${encodeURIComponent(sanminUrl)}`
+            ];
+
+            for (const proxy of sanminProxies) {
+                try {
+                    const res = await fetchWithTimeout(proxy, 8000);
+                    if (!res.ok) continue;
+
+                    const rawHtml = await res.text();
+                    const decodedHtml = decodeHtmlEntities(rawHtml);
+
+                    if (!decodedHtml.includes("三民") && !decodedHtml.includes("sanmin") && !decodedHtml.includes("商品") && !decodedHtml.includes("查詢")) {
+                        continue;
+                    }
+
+                    querySuccess = true;
+                    const htmlStr = decodedHtml.replace(/\s+/g, '');
+
+                    const sanminNotFound =
+                        htmlStr.includes("請以普遍的關鍵字重新搜尋") ||
+                        htmlStr.includes("請嘗試使用其他語義相近的關鍵字") ||
+                        htmlStr.includes("找不到符合的商品") || 
+                        htmlStr.includes("查無相關商品") || 
+                        htmlStr.includes("沒有找到任何符合的資料") || 
+                        htmlStr.includes("沒有符合的搜尋結果") || 
+                        htmlStr.includes("您查詢的關鍵字沒有符合的商品") ||
+                        htmlStr.includes("抱歉，沒有找到");
+
+                    if (!sanminNotFound) {
+                        bookFoundInStore = true;
+                        detectSpecialKeywords(decodedHtml, htmlStr, result);
+                    }
+
+                    break;
+                } catch (e) { }
+            }
+        }
+
+        // 4. 備援查詢：城邦讀書花園 (cite.com.tw) — 針對春光/城邦獨家或同人特裝本 (如 R18 標示)
         if (!bookFoundInStore) {
             const citeUrl = `https://www.cite.com.tw/search_result?keywords=${encodeURIComponent(isbn)}`;
             const citeProxies = [
@@ -825,7 +881,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             for (const proxy of citeProxies) {
                 try {
-                    const res = await fetchWithTimeout(proxy, 10000);
+                    const res = await fetchWithTimeout(proxy, 8000);
                     if (!res.ok) continue;
 
                     const rawHtml = await res.text();
@@ -835,7 +891,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     querySuccess = true;
-                    const htmlStr = decodedHtml.replace(/\s+/g, '');
                     const textOnly = decodedHtml.replace(/<[^>]+>/g, '').replace(/\s+/g, '');
                     const citeNotFound =
                         textOnly.includes("搜尋結果：共0筆") ||
@@ -845,7 +900,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (!citeNotFound && (textOnly.includes("搜尋結果：共") || textOnly.includes("放入購物車"))) {
                         bookFoundInStore = true;
-                        // 只截取搜尋結果區塊，避免城邦上方全站導覽列的「寫真」書展選單造成誤判
                         const startIdx = decodedHtml.indexOf("搜尋關鍵字");
                         const endIdx = decodedHtml.indexOf("關於城邦");
                         const citeBody = startIdx !== -1

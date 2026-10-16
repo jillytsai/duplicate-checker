@@ -304,8 +304,9 @@ document.addEventListener('DOMContentLoaded', () => {
             let specialProperty = "查詢中...";
             let collectionQuantity = "查詢中...";
             let nptuUrl = "";
+            let holdings = [];
             
-            createOrUpdateRow(i, displayBarcode, title, author, publisher, pubYear, specialProperty, rowStatus, statusText, collectionQuantity, nptuUrl);
+            createOrUpdateRow(i, displayBarcode, title, author, publisher, pubYear, specialProperty, rowStatus, statusText, collectionQuantity, nptuUrl, holdings);
 
             try {
                 if (i > 0) await new Promise(r => setTimeout(r, 600)); 
@@ -317,7 +318,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     let searchType = valIsbn.length === 8 ? 'ISSN' : 'ISBN';
                     processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查${searchType}] ${valIsbn}`;
                     const res = await checkNptu(valIsbn, 'k');
-                    if (res.found) { foundMatch = searchType; collectionQuantity = res.quantity; nptuUrl = res.url; }
+                    if (res.found) { foundMatch = searchType; collectionQuantity = res.quantity; nptuUrl = res.url; holdings = res.holdings || []; }
                 }
                 
                 // 1.2 Try searching by eISBN
@@ -325,7 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查eISBN] ${valEisbn}`;
                     await new Promise(r => setTimeout(r, 600));
                     const res = await checkNptu(valEisbn, 'k');
-                    if (res.found) { foundMatch = 'eISBN'; collectionQuantity = res.quantity; nptuUrl = res.url; }
+                    if (res.found) { foundMatch = 'eISBN'; collectionQuantity = res.quantity; nptuUrl = res.url; holdings = res.holdings || []; }
                 }
 
                 // 1.3 Try searching by pISBN
@@ -333,7 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查pISBN] ${valPisbn}`;
                     await new Promise(r => setTimeout(r, 600));
                     const res = await checkNptu(valPisbn, 'k');
-                    if (res.found) { foundMatch = 'pISBN'; collectionQuantity = res.quantity; nptuUrl = res.url; }
+                    if (res.found) { foundMatch = 'pISBN'; collectionQuantity = res.quantity; nptuUrl = res.url; holdings = res.holdings || []; }
                 }
                 
                 // 1.5 Try searching by EISSN
@@ -341,7 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查EISSN] ${valEissn}`;
                     await new Promise(r => setTimeout(r, 600));
                     const res = await checkNptu(valEissn, 'k');
-                    if (res.found) { foundMatch = 'EISSN'; collectionQuantity = res.quantity; nptuUrl = res.url; }
+                    if (res.found) { foundMatch = 'EISSN'; collectionQuantity = res.quantity; nptuUrl = res.url; holdings = res.holdings || []; }
                 }
                 
                 // Remove all punctuation/special characters for title search
@@ -352,7 +353,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!foundMatch && titleNoSpecial) {
                     processStatus.textContent = `處理中 (${i + 1}/${excelData.length}): [查書名] ${titleNoSpecial}`;
                     const res = await checkNptu(titleNoSpecial, 'k');
-                    if (res.found) { foundMatch = '書名'; collectionQuantity = res.quantity; nptuUrl = res.url; }
+                    if (res.found) { foundMatch = '書名'; collectionQuantity = res.quantity; nptuUrl = res.url; holdings = res.holdings || []; }
                 }
                 
                 // 3. Try "Cleaned" Title (remove subtitles etc, taking only part before typical subtitle separators)
@@ -367,7 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Delay again to protect from rate limit since we make another request
                         await new Promise(r => setTimeout(r, 600));
                         const res = await checkNptu(cleanTitle, 'k');
-                        if (res.found) { foundMatch = '書名(模糊)'; collectionQuantity = res.quantity; nptuUrl = res.url; }
+                        if (res.found) { foundMatch = '書名(模糊)'; collectionQuantity = res.quantity; nptuUrl = res.url; holdings = res.holdings || []; }
                     }
                 }
                 
@@ -424,13 +425,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 specialProperty = "查詢失敗";
             }
 
-            // Append field to data
+            // Append field to data (拆成三欄：館藏地、館藏條碼、館藏狀態)
             row["寫真書或限制級圖書"] = specialProperty;
             row["是否為複本"] = isDuplicate;
             row["館藏數量"] = collectionQuantity;
+            row["館藏地"] = holdings.length > 0 ? holdings.map(h => h.location).join("\n") : "";
+            row["館藏條碼"] = holdings.length > 0 ? holdings.map(h => h.barcode).join("\n") : "";
+            row["館藏狀態"] = holdings.length > 0 ? holdings.map(h => h.status).join("\n") : "";
             if (nptuUrl) row["系統連結"] = nptuUrl;
             processedData.push(row);
-            createOrUpdateRow(i, displayBarcode, title, author, publisher, pubYear, specialProperty, rowStatus, statusText, collectionQuantity, nptuUrl);
+            createOrUpdateRow(i, displayBarcode, title, author, publisher, pubYear, specialProperty, rowStatus, statusText, collectionQuantity, nptuUrl, holdings);
         }
 
         isProcessing = false;
@@ -443,7 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
         resetBtn.style.display = 'inline-flex';
     }
 
-    function createOrUpdateRow(index, isbn, title, author, publisher, pubYear, specialProperty, statusClass, statusText, quantity = "-", link = "") {
+    function createOrUpdateRow(index, isbn, title, author, publisher, pubYear, specialProperty, statusClass, statusText, quantity = "-", link = "", holdings = []) {
         let tr = document.getElementById(`row-${index}`);
         if (!tr) {
             tr = document.createElement('tr');
@@ -474,6 +478,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const authorTooltip = escapeHtml(author);
         const publisherTooltip = escapeHtml(publisher);
 
+        let holdingsHtml = '-';
+        if (statusClass === 'fetching') {
+            holdingsHtml = '<span style="color:#9ca3af;font-size:0.85em;">查詢中...</span>';
+        } else if (holdings && holdings.length > 0) {
+            holdingsHtml = holdings.map(h => {
+                const isAvailable = h.status.includes('在架') || h.status.includes('連線使用');
+                const statusColor = isAvailable ? '#059669' : '#d97706';
+                const statusBg = isAvailable ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.12)';
+                return `<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:0.85rem;line-height:1.6;">
+                    <span style="font-weight:600;color:#374151;">${h.location}</span>
+                    <span style="color:#9ca3af;">/</span>
+                    <span style="font-family:monospace;color:#4b5563;">${h.barcode}</span>
+                    <span style="padding:1px 6px;border-radius:4px;font-size:0.8rem;font-weight:600;color:${statusColor};background:${statusBg};">${h.status}</span>
+                </div>`;
+            }).join('');
+        }
+
         tr.innerHTML = `
             <td>${index + 1}</td>
             <td style="font-family:monospace">${isbn || '-'}</td>
@@ -484,6 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <td><span class="badge" style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:0.9em;color:${(specialProperty.includes('限制級') || specialProperty.includes('寫真書'))?'#d32f2f':'#666'}">${specialProperty || '-'}</span></td>
             <td><span class="status status-${statusClass}" style="${isDuplicateRed ? 'color: #d32f2f; background: rgba(211,47,47,0.1);' : ''}">${icon} ${statusText}</span></td>
             <td style="text-align:center;font-weight:bold;color:${isQtyRed ? '#d32f2f' : '#4f46e5'};">${quantity}</td>
+            <td>${holdingsHtml}</td>
             <td style="text-align:center;">${link ? `<a href="${link}" target="nptu_collection_win" rel="noopener noreferrer" onclick="const w=window.open(this.href, 'nptu_collection_win', 'width=1100,height=800,scrollbars=yes,resizable=yes'); if(w) w.focus(); return false;" title="在獨立新視窗開啟館藏連結" style="color:#4f46e5;text-decoration:none;cursor:pointer;"><i class="ph-bold ph-link"></i></a>` : '-'}</td>
         `;
     }
@@ -500,6 +522,51 @@ document.addEventListener('DOMContentLoaded', () => {
             clearTimeout(id);
             throw e;
         }
+    }
+
+    async function fetchHoldingsByMid(mid) {
+        const holdingUrl = `https://webpac.nptu.edu.tw/webpac/ajax_page/get_content_area.cfm?mid=${encodeURIComponent(mid)}&i_is=&i_lc=&i_list_number=100&i_page=1&i_vn=&i_cn=&i_ye=&i_sory_by=1`;
+        const proxies = [
+            holdingUrl,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(holdingUrl)}`,
+            `https://corsproxy.io/?${encodeURIComponent(holdingUrl)}`
+        ];
+
+        for (const proxy of proxies) {
+            try {
+                const res = await fetchWithTimeout(proxy, 10000);
+                if (!res.ok) continue;
+                const html = await res.text();
+                if (!html.includes("query") && !html.includes("table") && !html.includes("無館藏資料")) continue;
+
+                const holdings = [];
+                const tbodyMatch = html.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i);
+                if (tbodyMatch) {
+                    const trMatches = [...tbodyMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)];
+                    for (const tr of trMatches) {
+                        const rowHtml = tr[1];
+                        const extractField = (titleAttr) => {
+                            const m = rowHtml.match(new RegExp(`data-title=["']${titleAttr}["'][^>]*>([\\s\\S]*?)<\\/td>`, 'i'));
+                            return m ? m[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim() : '';
+                        };
+                        const barcode = extractField('條碼號：');
+                        const location = extractField('典藏地名稱：');
+                        const status = extractField('館藏狀態：');
+                        if (barcode || location || status) {
+                            holdings.push({
+                                barcode: barcode || '-',
+                                location: location || '-',
+                                status: status || '-'
+                            });
+                        }
+                    }
+                }
+                return holdings;
+            } catch (e) {
+                // Ignore and try next proxy
+            }
+        }
+        return [];
     }
 
     async function checkNptu(query, typeStr) {
@@ -552,11 +619,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 ) {
                     // Confirm it actually found records, not just "0 Search Results"
                     if (html.includes("沒有找到任何符合的資料") || html.includes("查無資料") || html.includes("0 筆結果")) {
-                        return { found: false, quantity: "0", url: "" };
+                        return { found: false, quantity: "0", url: "", holdings: [] };
                     }
-                    return { found: true, quantity: quantityStr || "1+", url: searchUrl };
+
+                    // 擷取頁面上的書目 mid 並查詢館藏明細 (館藏地、條碼號、館藏狀態)
+                    const mids = [...new Set([
+                        ...[...redirectedUrl.matchAll(/mid=(\d+)/gi)].map(m => m[1]),
+                        ...[...html.matchAll(/content\.cfm\?mid=(\d+)/gi)].map(m => m[1])
+                    ])];
+
+                    let holdings = [];
+                    for (let mIdx = 0; mIdx < Math.min(mids.length, 5); mIdx++) {
+                        const items = await fetchHoldingsByMid(mids[mIdx]);
+                        if (items.length > 0) {
+                            holdings = items;
+                            if (!quantityStr || quantityStr === "0") {
+                                quantityStr = String(items.length);
+                            }
+                            break;
+                        }
+                    }
+
+                    return { found: true, quantity: quantityStr || "1+", url: searchUrl, holdings };
                 }
-                return { found: false, quantity: "0", url: "" }; 
+                return { found: false, quantity: "0", url: "", holdings: [] }; 
             } catch (err) {
                 // Ignore and try next proxy
                 lastErr = err.message;
@@ -669,6 +755,8 @@ document.addEventListener('DOMContentLoaded', () => {
             delete exportRow['__sheetName']; // 移出內部分頁標記
             delete exportRow['__SYS_ISBN'];
             delete exportRow['__SYS_EISSN'];
+            delete exportRow['__SYS_EISBN'];
+            delete exportRow['__SYS_PISBN'];
             delete exportRow['__SYS_TITLE'];
             delete exportRow['__SYS_AUTHOR'];
             delete exportRow['__SYS_PUBLISHER'];
@@ -716,6 +804,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             cell.s = {
                                 font: { color: { rgb: "FF0000" }, bold: true }
                             };
+                        }
+
+                        // 確保館藏條碼以純文字格式儲存（避免長數字變成科學記號），且支援多筆換行顯示
+                        if (header === '館藏地' || header === '館藏條碼' || header === '館藏狀態') {
+                            cell.t = 's';
+                            cell.s = cell.s || {};
+                            cell.s.alignment = { wrapText: true, vertical: "center" };
                         }
                         
                         // 設定「系統連結」欄位為可點擊超連結的樣式
